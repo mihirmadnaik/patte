@@ -1,0 +1,1218 @@
+/*
+ * Table feel.
+ *
+ * One rule underlies most of this: every card is a single absolutely
+ * positioned element whose only animated property is `transform`. Moving a
+ * card between zones changes nothing but that transform, so the browser tweens
+ * it on the compositor and the card slides across the table instead of
+ * teleporting. Nothing here needs a layout pass mid-animation.
+ */
+
+:root {
+  --felt: #1d5b43;
+  --felt-edge: #123f2e;
+  --rail: #46301f;
+  --ink: #1b1b1f;
+  --paper: #fdfcf8;
+  --red: #c0392b;
+  --accent: #f0c04a;
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.28), 0 8px 18px rgba(0, 0, 0, 0.22);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  /* Dynamic viewport height: on iOS the URL bar shrinks the window as you
+     scroll, and `100%` leaves the hand cropped below the fold. */
+  height: 100dvh;
+  margin: 0;
+  overflow: hidden;
+  background: #0e1512;
+  color: #f2f4f2;
+  -webkit-user-select: none;
+  user-select: none;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* --- toolbar ------------------------------------------------------------ */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: linear-gradient(#241a10, #1a120b);
+  border-bottom: 2px solid #0c0805;
+  z-index: 10;
+}
+
+.toolbar__group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.toolbar button {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid #4a3826;
+  background: linear-gradient(#3a2b1c, #2c2015);
+  color: #f0e6d8;
+  cursor: pointer;
+  transition: background 120ms var(--ease), transform 80ms var(--ease);
+}
+
+.toolbar button:hover:not(:disabled) { background: linear-gradient(#4a3724, #362717); }
+.toolbar button:active:not(:disabled) { transform: translateY(1px); }
+.toolbar button:disabled { opacity: 0.4; cursor: default; }
+
+/* The way out of a room. Quiet until it is asking. */
+.toolbar button.leave { border-color: #573a2a; }
+.toolbar button.leave.is-asking {
+  border-color: #a5563f;
+  background: linear-gradient(#5d3122, #45241a);
+  color: #ffd9c9;
+}
+
+.toolbar .code {
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  border-color: #5a441f;
+}
+
+.toolbar input[type='number'] {
+  width: 46px;
+  font: inherit;
+  font-size: 13px;
+  padding: 6px;
+  text-align: center;
+  border-radius: 6px;
+  border: 1px solid #4a3826;
+  background: #1a120b;
+  color: #f0e6d8;
+}
+
+.deal { display: inline-flex; align-items: center; gap: 6px; }
+.deal em { font-style: normal; font-size: 12px; opacity: 0.6; }
+
+.toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; opacity: 0.85; cursor: pointer; }
+
+.status { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; opacity: 0.75; }
+.status--connected { color: #6ed49a; }
+.status--reconnecting { color: var(--accent); }
+.status--error { color: #e0685a; }
+
+/* --- the table ---------------------------------------------------------- */
+
+.surface {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.felt {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 42%, #27725a 0%, var(--felt) 45%, var(--felt-edge) 100%);
+  box-shadow: inset 0 0 140px rgba(0, 0, 0, 0.55);
+}
+
+.felt::after {
+  /* A faint weave, so the surface is not a flat colour field. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.05;
+  background-image:
+    repeating-linear-gradient(45deg, #000 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(-45deg, #000 0 1px, transparent 1px 3px);
+}
+
+.slot {
+  position: absolute;
+  border: 2px dashed rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  z-index: 100;
+}
+
+.slot__label {
+  position: absolute;
+  bottom: -20px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  opacity: 0.75;
+  /* Piles cast a heavy shadow on the felt right where their label sits. */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.hand-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 150px;
+  z-index: 100;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.28));
+}
+
+.seat {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  /* Above the cards. The layout keeps them apart, but a name plate that can
+     be buried by a card is the one failure this must not have. */
+  z-index: 1500;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid transparent;
+  transition: border-color 200ms var(--ease), opacity 200ms var(--ease);
+}
+
+.seat__name { display: block; font-size: 13px; font-weight: 600; }
+.seat__count { display: block; font-size: 11px; opacity: 0.65; }
+.seat.is-turn { border-color: var(--accent); box-shadow: 0 0 16px rgba(240, 192, 74, 0.35); }
+.seat.is-away { opacity: 0.4; }
+
+/* --- cards -------------------------------------------------------------- */
+
+.card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 7px;
+  /* transform-origin is set inline, from FAN_PIVOT in geometry.ts. */
+  will-change: transform;
+  /* The one animated property. Everything else is instant. */
+  transition: transform 240ms var(--ease), box-shadow 160ms var(--ease), filter 160ms var(--ease);
+  box-shadow: var(--shadow);
+  cursor: grab;
+}
+
+.card.is-dragging {
+  /* Follow the finger exactly; a tween here would feel like lag. */
+  transition: none;
+  cursor: grabbing;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.card--face {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid #cfc9ba;
+}
+
+.card--face.is-red { color: var(--red); }
+
+/* Only you can see this one. */
+.card--private::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--felt);
+  opacity: 0.55;
+}
+
+.card--back {
+  background: linear-gradient(135deg, #8f2b2b, #6e1f22);
+  border: 1px solid #4d1618;
+}
+
+.card__back {
+  position: absolute;
+  inset: 5px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background-image:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.14) 0 2px, transparent 2px 6px);
+}
+
+.card__corner {
+  position: absolute;
+  font-size: 1em;
+  font-weight: 700;
+  line-height: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.card__corner em { font-style: normal; font-size: 0.923em; }
+.card__corner--tl { top: 0.46em; left: 0.46em; }
+.card__corner--br { bottom: 0.46em; right: 0.46em; transform: rotate(180deg); }
+
+.card__pip {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 2.615em;
+  opacity: 0.9;
+}
+
+.card.is-selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Someone else has this one; it is not yours to touch right now. */
+.card.is-held { filter: brightness(0.72) saturate(0.7); cursor: not-allowed; }
+
+.card.is-peeking {
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5), 0 0 0 2px var(--accent);
+}
+
+/* --- cursors ------------------------------------------------------------ */
+
+.cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 9500;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 3px;
+  transition: transform 60ms linear;
+}
+
+.cursor svg { fill: var(--accent); filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6)); }
+
+.cursor span {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #201704;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* --- lobby, toasts, waiting --------------------------------------------- */
+
+/*
+ * The one screen in the app that scrolls.
+ *
+ * `body` sets `overflow: hidden` and `touch-action: none`, which is right for
+ * a table -- a card game that scrolls under your thumb is unplayable -- but
+ * the lobby is a form, and picking a game adds a round-count row and grows it.
+ * On a short phone that pushed "join by code" off the bottom with no way to
+ * reach it, so this screen opts back in to panning.
+ *
+ * Centred with `margin: auto` on the child rather than `place-items: center`.
+ * A centred grid item taller than its container overflows equally in both
+ * directions and the top goes out of reach of the scroller; an auto margin
+ * centres when there is room and gives up gracefully when there is not.
+ */
+.lobby, .waiting {
+  height: 100%;
+  display: flex;
+  padding: 20px 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  background: radial-gradient(ellipse at 50% 35%, #23604a, #0e1512 70%);
+}
+
+.lobby__card, .waiting p { margin: auto; }
+
+.lobby__card {
+  width: min(360px, 90vw);
+  padding: 28px;
+  border-radius: 14px;
+  background: rgba(12, 20, 16, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.lobby h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: 0.02em; }
+.lobby p { margin: 0 0 22px; opacity: 0.65; font-size: 14px; line-height: 1.5; }
+.lobby label { display: block; font-size: 12px; opacity: 0.7; margin-bottom: 16px; }
+
+.lobby input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  font: inherit;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.3);
+  color: inherit;
+}
+
+.lobby button {
+  font: inherit;
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  cursor: pointer;
+}
+
+.lobby button.primary {
+  width: 100%;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #201704;
+  font-weight: 700;
+}
+
+.lobby__or { text-align: center; font-size: 12px; opacity: 0.45; margin: 18px 0 10px; }
+.lobby__back { margin: 0 0 12px; font-size: 12px; line-height: 1.5; opacity: 0.7; }
+.lobby__back strong { color: var(--accent); letter-spacing: 0.12em; font-family: ui-monospace, monospace; }
+.lobby__join { display: flex; gap: 8px; }
+.lobby__join input { text-align: center; letter-spacing: 0.2em; font-family: ui-monospace, monospace; }
+
+.toasts {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: rgba(10, 10, 10, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  animation: rise 180ms var(--ease);
+}
+
+.toast--denied { border-color: #b5473a; color: #ffd9d3; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card, .cursor, .toast { transition: none; animation: none; }
+}
+
+/* --- refereed games ------------------------------------------------------ */
+
+.game-name {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+/* A suit's row on the layout. Empty rows read as a place a seven could go. */
+.row-slot {
+  position: absolute;
+  border-radius: 10px;
+  z-index: 90;
+  border: 1px solid transparent;
+}
+
+.row-slot.is-empty {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.row-slot__suit {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 22px;
+  opacity: 0.28;
+}
+
+.row-slot__suit[data-suit='H'],
+.row-slot__suit[data-suit='D'] { color: #ff9c8f; }
+
+/* Playable and blocked are the referee talking. Playable lifts and glows;
+   blocked recedes rather than shouting, since most of a hand is unplayable
+   most of the time and a wall of red would be noise. */
+.card.is-playable {
+  box-shadow: 0 0 0 2px var(--accent), 0 10px 22px rgba(0, 0, 0, 0.4);
+}
+
+.card.is-blocked {
+  filter: brightness(0.62) saturate(0.55);
+}
+
+
+
+
+
+
+/* Lobby and end-of-game overlay. */
+.panel {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 12, 9, 0.72);
+  z-index: 9800;
+  backdrop-filter: blur(3px);
+}
+
+.panel__card {
+  width: min(380px, 90vw);
+  padding: 26px;
+  border-radius: 14px;
+  background: #0e1a14;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  text-align: center;
+}
+
+.panel__card h2 { margin: 0 0 6px; font-size: 24px; }
+.panel__card p { margin: 0 0 18px; font-size: 13px; opacity: 0.65; line-height: 1.5; }
+
+.panel__players, .panel__rankings {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  text-align: left;
+}
+
+.panel__players li, .panel__rankings li {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-radius: 7px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.04);
+  margin-bottom: 4px;
+}
+
+.panel__players li.is-away { opacity: 0.4; }
+.panel__rankings em { font-style: normal; opacity: 0.55; }
+.panel__rankings { counter-reset: place 1; }
+.panel__rankings li::before {
+  counter-increment: place;
+  content: counter(place) '.';
+  opacity: 0.45;
+  margin-right: 8px;
+}
+
+.panel__card button.primary {
+  width: 100%;
+  font: inherit;
+  font-weight: 700;
+  padding: 11px;
+  border-radius: 9px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #201704;
+  cursor: pointer;
+}
+
+.panel__card button.primary:disabled { opacity: 0.35; cursor: not-allowed; }
+.panel__hint { margin: 14px 0 0 !important; font-size: 12px !important; }
+
+/* Game picker in the lobby. */
+.games { border: 0; padding: 0; margin: 0 0 18px; }
+.games legend { font-size: 12px; opacity: 0.7; padding: 0 0 6px; }
+
+.games label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+  transition: border-color 120ms var(--ease), background 120ms var(--ease);
+}
+
+.games label.is-chosen { border-color: var(--accent); background: rgba(240, 192, 74, 0.08); }
+.games input { grid-row: 1 / span 3; align-self: center; margin: 0; }
+.games__name { font-size: 14px; font-weight: 600; }
+.games__blurb { grid-column: 2; font-size: 12px; opacity: 0.6; line-height: 1.4; }
+.games__count { grid-column: 2; font-size: 11px; opacity: 0.45; margin-top: 2px; }
+
+/* --- match: code, rounds, scoreboard, options --------------------------- */
+
+.toolbar .code {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.toolbar .code em {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.round-count {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+}
+
+/* The code, stated plainly where people are waiting to be joined. */
+.joincode {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(240, 192, 74, 0.08);
+  border: 1px solid rgba(240, 192, 74, 0.3);
+  text-align: left;
+}
+
+.joincode__label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+
+.joincode__value {
+  flex: 1;
+  font-family: ui-monospace, 'SF Mono', monospace;
+  font-size: 22px;
+  letter-spacing: 0.22em;
+  color: var(--accent);
+}
+
+.joincode button {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.07);
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rounds {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px !important;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.rounds__stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.rounds__stepper button {
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  cursor: pointer;
+}
+
+.rounds__stepper button:disabled { opacity: 0.3; cursor: not-allowed; }
+.rounds__stepper button:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.rounds__stepper output { min-width: 34px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.panel__card--wide { width: min(460px, 92vw); }
+
+.scoreboard { margin: 0 0 18px; }
+
+.scoreboard table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoreboard th, .scoreboard td {
+  padding: 6px 8px;
+  text-align: right;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.scoreboard thead th { font-size: 11px; opacity: 0.6; font-weight: 600; }
+.scoreboard thead th.is-you { color: var(--accent); opacity: 1; }
+.scoreboard th[scope='row'] { text-align: left; opacity: 0.5; font-weight: 400; }
+.scoreboard td.is-winner { color: #8fe0ae; }
+.scoreboard tfoot td, .scoreboard tfoot th { border-bottom: 0; padding-top: 9px; font-weight: 700; }
+.scoreboard tfoot td.is-leading { color: var(--accent); }
+.scoreboard tfoot tr { border-top: 2px solid rgba(255, 255, 255, 0.16); }
+
+.scoreboard__note {
+  margin: 8px 0 0 !important;
+  font-size: 11px !important;
+  opacity: 0.45 !important;
+  text-align: left;
+}
+
+.panel__card button.ghost {
+  width: 100%;
+  margin-top: 8px;
+  font: inherit;
+  font-size: 12px;
+  padding: 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+
+.menu { position: relative; }
+
+.menu__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 290px;
+  padding: 12px;
+  border-radius: 11px;
+  background: #12201a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+  z-index: 9900;
+  text-align: left;
+}
+
+.menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  padding: 4px 0 10px;
+  opacity: 0.85;
+}
+
+.menu__action {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  padding: 9px 10px;
+  margin-bottom: 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+}
+
+.menu__action:hover { background: rgba(255, 255, 255, 0.1); }
+.menu__action em { display: block; font-style: normal; font-size: 11px; opacity: 0.5; margin-top: 2px; }
+.menu__note { font-size: 12px; opacity: 0.5; margin: 0 0 10px; }
+.menu .scoreboard { margin: 12px 0 0; }
+
+/* The card just played, so everyone can see what happened. */
+.card.is-last-play {
+  box-shadow: 0 0 0 2px #7fd7ff, 0 0 18px rgba(127, 215, 255, 0.5), var(--shadow);
+  animation: just-played 620ms var(--ease);
+}
+
+@keyframes just-played {
+  0% { box-shadow: 0 0 0 5px rgba(127, 215, 255, 0.8), 0 0 30px rgba(127, 215, 255, 0.7); }
+  100% { box-shadow: 0 0 0 2px #7fd7ff, 0 0 18px rgba(127, 215, 255, 0.5), var(--shadow); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.is-last-play { animation: none; }
+}
+
+/* --- 7-8: stacks, trick, trump ------------------------------------------ */
+
+.trick-slot {
+  position: absolute;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.13);
+  z-index: 90;
+}
+
+/*
+ * Choosing trump.
+ *
+ * The five cards in your hand are the entire basis for the decision, so the
+ * overlay must not touch them: no blur, no scrim, and the card sits high
+ * enough to leave the hand along the bottom completely clear.
+ */
+.panel--soft {
+  background: transparent;
+  backdrop-filter: none;
+  align-items: start;
+  padding-top: 4vh;
+  pointer-events: none;
+}
+
+.panel--soft .panel__card {
+  pointer-events: auto;
+  /* It has to read against the felt now that nothing is dimming it. */
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.suits {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.suits__pick {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 14px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  transition: transform 90ms var(--ease), box-shadow 120ms var(--ease);
+}
+
+.suits__pick:hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4); }
+.suits__pick.is-red { color: var(--red); }
+.suits__glyph { font-size: 22px; line-height: 1; }
+
+.trumpstrip {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+  z-index: 8000;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.trumpstrip em {
+  font-style: normal;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-right: 6px;
+}
+
+.trumpstrip__trump { font-size: 19px; line-height: 1; color: #f4f4f4; }
+.trumpstrip__trump.is-red { color: #ff8f80; }
+.trumpstrip__player i { font-style: normal; opacity: 0.45; }
+.trumpstrip__player.is-met { color: var(--accent); }
+
+/* --- status readout ------------------------------------------------------ */
+
+/*
+ * Whose turn it is, and the one button that is yours to press.
+ *
+ * Two placements, switched from `PLACEMENT` in GamePanel.tsx while we settle
+ * on one. The shared rules are here; each variant only says where it goes.
+ */
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  z-index: 9000;
+}
+
+/* The pill itself, wherever it is put. */
+.statusbar--hand,
+.statusbar--corner {
+  position: fixed;
+  bottom: 12px;
+  padding: 8px 10px 8px 15px;
+  border-radius: 999px;
+  background: rgba(6, 12, 9, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+  /* Recedes while it is somebody else's move. */
+  opacity: 0.72;
+  transition: opacity 160ms var(--ease), border-color 160ms var(--ease),
+    box-shadow 160ms var(--ease);
+}
+
+/*
+ * Directly under your own hand, which is where your eyes already are. The
+ * table reserves a band for it rather than letting it float, so a fanned hand
+ * can never reach down over the top of it.
+ */
+.statusbar--hand {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+/* The same pill, tucked out of the way in the bottom-left instead. */
+.statusbar--corner {
+  left: 14px;
+}
+
+/* It is easy to overlook, so it speaks up when it is actually your go. */
+.statusbar--hand.is-mine,
+.statusbar--corner.is-mine {
+  opacity: 1;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(240, 192, 74, 0.25), 0 6px 24px rgba(240, 192, 74, 0.18);
+}
+
+/* Its own row beneath the table. Cannot overlap; costs a row of height. */
+.statusbar--bar {
+  position: static;
+  flex: 0 0 auto;
+  justify-content: center;
+  min-height: 46px;
+  padding: 8px 16px;
+  background: linear-gradient(#141d18, #0d1511);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.statusbar--bar.is-mine {
+  background: linear-gradient(#1d2a1f, #121b14);
+  border-top-color: rgba(240, 192, 74, 0.4);
+}
+
+.statusbar__text { opacity: 0.85; }
+.statusbar.is-mine .statusbar__text { opacity: 1; }
+
+.statusbar__act {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #201704;
+  cursor: pointer;
+}
+
+.statusbar__act:disabled {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: inherit;
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.statusbar__act:hover:not(:disabled) { filter: brightness(1.08); }
+
+/* Clear of the status bar, which now owns the bottom of the window. */
+.toasts { bottom: 66px; }
+
+/* --- phones -------------------------------------------------------------- */
+
+/*
+ * Below this width the chrome compacts. The cards are sized by the layout
+ * solver rather than here -- this is only the furniture around them.
+ */
+@media (max-width: 479px) {
+  .toolbar {
+    /* One row, never three. The sandbox verbs move into a menu. */
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 8px 10px;
+    padding-top: calc(8px + env(safe-area-inset-top));
+    padding-left: calc(10px + env(safe-area-inset-left));
+    padding-right: calc(10px + env(safe-area-inset-right));
+  }
+
+  .toolbar .code { font-size: 13px; letter-spacing: 0.12em; padding: 5px 9px; }
+  .toolbar .code em { display: none; }
+  .toolbar button { font-size: 12px; padding: 6px 9px; }
+  .game-name { display: none; }
+  .status { display: none; }
+
+  /*
+   * The trump and quota strip stops floating and takes a row of its own. Over
+   * the toolbar it would land on the buttons; there is no spare width for it.
+   */
+  .trumpstrip {
+    position: static;
+    transform: none;
+    flex: 0 0 auto;
+    border-radius: 0;
+    border-width: 0 0 1px;
+    backdrop-filter: none;
+    justify-content: center;
+    gap: 14px;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
+
+  /* Clear of the home indicator. */
+  .statusbar--hand, .statusbar--corner {
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    max-width: calc(100vw - 20px);
+  }
+
+  .toasts { bottom: calc(74px + env(safe-area-inset-bottom)); }
+
+  .panel__card, .panel__card--wide { width: min(340px, 92vw); padding: 20px; }
+  .menu__panel { width: min(280px, calc(100vw - 24px)); }
+}
+
+/* --- the hand, opened out ------------------------------------------------ */
+
+.drawer__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 9400;
+}
+
+/*
+ * A bottom sheet holding your hand at a pitch you can hit. It exists because a
+ * crowded fan is unreadable to a thumb, not because the fan is wrong -- so it
+ * closes again the moment a card is chosen.
+ */
+.drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9500;
+  padding: 4px 0 calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(rgba(10, 18, 14, 0.96), rgba(6, 12, 9, 0.99));
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.55);
+  animation: drawer-in 180ms var(--ease);
+}
+
+@keyframes drawer-in {
+  from { transform: translateY(60%); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+.drawer__handle {
+  display: block;
+  width: 100%;
+  padding: 6px 0 4px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.drawer__handle span {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.drawer__strip {
+  display: flex;
+  gap: 6px;
+  padding: 6px 14px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* The one place in the app that scrolls, so it opts back in to touch panning. */
+  touch-action: pan-x;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.drawer__strip .card { position: relative; cursor: pointer; }
+
+.drawer__hint {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  opacity: 0.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawer { animation: none; }
+}
+
+/*
+ * Tricks taken, on a phone.
+ *
+ * A pile of won tricks is face down and sealed, so a count says everything the
+ * cards could. It sits in the margin beside the trick -- the drop area is a
+ * fixed number of cards wide and centred, so that space is reliably empty
+ * whatever the screen.
+ */
+.pilechip {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px 4px 5px;
+  border-radius: 999px;
+  background: rgba(6, 12, 9, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 700;
+  pointer-events: none;
+}
+
+.pilechip__back {
+  width: 13px;
+  height: 18px;
+  border-radius: 2px;
+  background: linear-gradient(135deg, #8f2b2b, #6e1f22);
+  border: 1px solid #4d1618;
+}
+
+.pilechip__count {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.pilechip.is-mine .pilechip__count { color: var(--accent); opacity: 1; }
+
+/* --- the one-tap play button ---------------------------------------------
+ *
+ * Two concentric rings sitting on the chosen card: a green disc, a white
+ * centre, a green tick. Held at 70% opacity so the card underneath still
+ * reads -- you are confirming a card you can still see, not covering it up.
+ */
+/*
+ * Sits high on the card rather than across its middle: you are confirming a
+ * card, so the rank and suit have to stay readable under your thumb.
+ */
+.playcheck {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 9500;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  background: #1f9d55;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  opacity: 0.7;
+  cursor: pointer;
+  /* A confirm button is not something to double-tap-zoom or long-press. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.playcheck:hover,
+.playcheck:active {
+  opacity: 0.92;
+}
+
+.playcheck__tick {
+  width: 66%;
+  height: 66%;
+  border-radius: 50%;
+  background: #fff;
+  /* The tick itself: two sides of a box, rotated. Cheaper than an icon font
+   * and it scales with the button, which scales with the card. */
+  position: relative;
+}
+
+.playcheck__tick::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 30%;
+  height: 52%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border-right: 2.5px solid #1f9d55;
+  border-bottom: 2.5px solid #1f9d55;
+  border-bottom-right-radius: 1px;
+}
+
+/* In the opened-out hand the cards are square on and laid out in flow, so the
+ * button can be placed against its card rather than computed from a rotation. */
+.drawer__slot {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+}
+
+.playcheck--inline {
+  left: 50%;
+  /* Clear above the card, like the one on the table. `translate(-50%, -100%)`
+   * puts the button's *bottom* edge on that line, so the gap is the gap
+   * whatever size the button is. */
+  top: -6px;
+  transform: translate(-50%, -100%);
+  z-index: 1;
+}
+
+/*
+ * Sort your hand. Sits in the free strip beside the status pill.
+ */
+.handsort {
+  position: absolute;
+  transform: translateY(-100%);
+  z-index: 8000;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(6, 12, 9, 0.72);
+  color: #e8efe9;
+  cursor: pointer;
+  /* A control, not a card: no long-press, no double-tap zoom. */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.handsort.is-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(240, 192, 74, 0.14);
+}

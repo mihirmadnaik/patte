@@ -1,0 +1,22 @@
+{
+  "name": "patte",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Online sandbox card table",
+  "workspaces": [
+    "packages/core",
+    "packages/server",
+    "packages/client"
+  ],
+  "scripts": {
+    "build": "tsc -b packages/core packages/server && npm run build -w @patte/client",
+    "test": "npm run test -w @patte/core && npm run test -w @patte/server && npm run test -w @patte/client",
+    "dev:server": "npm run dev -w @patte/server",
+    "dev:client": "npm run dev -w @patte/client",
+    "typecheck": "tsc -b packages/core packages/server",
+    "start": "node packages/server/dist/index.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

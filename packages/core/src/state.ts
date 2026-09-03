@@ -1,0 +1,279 @@
+/**
+ * The state model for a table.
+ *
+ * Everything on a table is a card in a zone. Deck, discard, a player's hand, a
+ * trick, a meld pile and "the middle of the table" are not separate concepts --
+ * they are all `Zone`s that differ only in their visibility, layout and owner.
+ * Keeping that single abstraction is what lets one engine serve both free play
+ * and, later, enforced rulesets.
+ */
+
+export type CardId = string;
+export type ZoneId = string;
+export type PlayerId = string;
+
+export type Suit = 'C' | 'D' | 'H' | 'S';
+export type Rank =
+  | 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10'
+  | 'J' | 'Q' | 'K' | 'JOKER';
+
+export interface Face {
+  rank: Rank;
+  suit: Suit | null; // jokers have no suit
+}
+
+/** Who may see the face of a card lying face down in this zone. */
+export type FaceVisibility = 'none' | 'owner' | 'all';
+
+/** How the client arranges the cards of a zone. Purely presentational. */
+export type Layout = 'stack' | 'spread' | 'fan' | 'grid' | 'free';
+
+export type ZoneKind =
+  | 'deck'
+  | 'discard'
+  | 'hand'
+  | 'trick'
+  | 'meld'
+  | 'table'
+  | 'row'
+  /** A small face-down pile with a face-up card on top, as in 7-8. */
+  | 'stack'
+  /** Tricks a player has won and set aside. */
+  | 'pile';
+
+/**
+ * Where a table is in the arc of a game.
+ *
+ * Free play is always `playing` -- there is nothing to start or finish. A game
+ * with rules needs the other two: somewhere to gather before the deal, and
+ * somewhere to stand once someone has won.
+ */
+export type Phase = 'lobby' | 'playing' | 'finished';
+
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Zone {
+  id: ZoneId;
+  kind: ZoneKind;
+  /** Null for shared zones (deck, discard, the table surface). */
+  owner: PlayerId | null;
+  layout: Layout;
+  /** Who sees the faces of face-down cards here. The core of hidden information. */
+  faceDownVisibleTo: FaceVisibility;
+  /** May players other than the owner move cards out of this zone? */
+  openToOthers: boolean;
+  /**
+   * Cards go in and do not come out.
+   *
+   * A trick you have won and a card already played to a layout are settled
+   * facts. Without this the owner of a pile could pull cards back out of it --
+   * `mayTakeFrom` lets a zone's owner reach into their own zone, which is
+   * right for a hand and quite wrong for winnings.
+   */
+  sealed?: boolean;
+  /** Ordered contents. Authoritative for card order. */
+  cards: CardId[];
+  /** Where the zone sits on the table surface, for rendering. */
+  pos?: Point;
+  label?: string;
+}
+
+export interface Card {
+  id: CardId;
+  /**
+   * Null means "the holder of this state is not entitled to know the face".
+   * The server's copy is always populated; a client's copy is populated only
+   * for cards that client may see. Modelling it as nullable rather than
+   * keeping a separate client type is what lets both sides run one reducer.
+   */
+  face: Face | null;
+  /** Denormalised back-reference to the containing zone. Kept in step by the reducer. */
+  zone: ZoneId;
+  faceUp: boolean;
+  /** Players granted a targeted look at this card -- Go Fish, showing a hand. */
+  revealedTo: PlayerId[];
+  /** Concurrency lock. Only the holder may move or flip the card. */
+  heldBy: PlayerId | null;
+  /** Bumped on every mutation, so clients can detect stale optimistic state. */
+  version: number;
+  /** Free placement within a `free` zone. Ignored for other layouts. */
+  pos?: Point;
+}
+
+export interface Player {
+  id: PlayerId;
+  name: string;
+  seat: number;
+  connected: boolean;
+  /** The player who created the table may force undos and change options. */
+  isOwner: boolean;
+}
+
+export interface TableOptions {
+  /** When false, anyone may look into anyone's hand. Useful for teaching games. */
+  handsArePrivate: boolean;
+  /** When false, only the table owner may shuffle. */
+  anyoneMayShuffle: boolean;
+  /** When true, only the player holding the turn may act on shared zones. */
+  enforceTurnOrder: boolean;
+  /** Seconds an unattended grab lock survives before the server releases it. */
+  grabLockTtlMs: number;
+  /** Window within which a player may undo their own last action. */
+  undoWindowMs: number;
+}
+
+export const DEFAULT_OPTIONS: TableOptions = {
+  handsArePrivate: true,
+  anyoneMayShuffle: true,
+  enforceTurnOrder: false,
+  grabLockTtlMs: 10_000,
+  undoWindowMs: 10_000,
+};
+
+export interface GameState {
+  roomId: string;
+  /** Sequence number of the last applied event. */
+  seq: number;
+  rulesetId: string;
+  players: Record<PlayerId, Player>;
+  /** Seating order around the table, clockwise. */
+  seatOrder: PlayerId[];
+  zones: Record<ZoneId, Zone>;
+  cards: Record<CardId, Card>;
+  turn: PlayerId | null;
+  scores: Record<PlayerId, number>;
+  options: TableOptions;
+  /** Free-form declarations: bids, calls, "gin". Newest last. */
+  declarations: Declaration[];
+
+  phase: Phase;
+  match: MatchState;
+  /**
+   * The most recent play into a public zone.
+   *
+   * Held in state rather than worked out from the event stream on the client,
+   * so that someone who reconnects mid-hand sees the same highlight as
+   * everyone who watched it land.
+   */
+  lastPlay: LastPlay | null;
+  /**
+   * Who was dealt into the current game, in turn order.
+   *
+   * Distinct from `seatOrder` on purpose: somebody who arrives mid-hand has a
+   * seat but no cards, and the turn must skip them until the next deal.
+   */
+  inPlay: PlayerId[];
+  /** Finishing order once the game is over. First out is first here. */
+  rankings: PlayerId[];
+
+  /**
+   * A scratchpad the current ruleset owns and the engine only carries.
+   *
+   * Most of what a game needs can be read off the zones -- whose turn it is,
+   * how many tricks someone has won, what is on the layout -- and anything
+   * derivable should be derived rather than stored twice. This is for the
+   * remainder: facts with nowhere else to live, like which suit is trump or
+   * which stage of the deal a game is in. The engine never reads it.
+   */
+  gameData: Record<string, string | number | boolean>;
+}
+
+export interface Declaration {
+  seq: number;
+  by: PlayerId;
+  text: string;
+}
+
+/** What one completed round was worth. Lower scores are better. */
+export interface RoundResult {
+  scores: Record<PlayerId, number>;
+  /** Finishing order; whoever went out first is first. */
+  rankings: PlayerId[];
+}
+
+/**
+ * A run of rounds played by the same table.
+ *
+ * Kept in engine state rather than in the ruleset so that a late joiner and a
+ * reconnecting player both get the running totals with their first snapshot,
+ * the same as everything else.
+ */
+export interface MatchState {
+  /** How many rounds this match is set to run. */
+  rounds: number;
+  /** Completed rounds, oldest first. */
+  played: RoundResult[];
+}
+
+/** The cards most recently put down in public, so everyone can see the play. */
+export interface LastPlay {
+  cardIds: CardId[];
+  by: PlayerId | null;
+}
+
+// --- accessors -------------------------------------------------------------
+// `noUncheckedIndexedAccess` makes every record lookup optional. These helpers
+// keep that honest at the boundary instead of scattering non-null assertions.
+
+export function getCard(state: GameState, id: CardId): Card {
+  const card = state.cards[id];
+  if (!card) throw new Error(`unknown card: ${id}`);
+  return card;
+}
+
+export function getZone(state: GameState, id: ZoneId): Zone {
+  const zone = state.zones[id];
+  if (!zone) throw new Error(`unknown zone: ${id}`);
+  return zone;
+}
+
+export function tryCard(state: GameState, id: CardId): Card | undefined {
+  return state.cards[id];
+}
+
+export function tryZone(state: GameState, id: ZoneId): Zone | undefined {
+  return state.zones[id];
+}
+
+export function getPlayer(state: GameState, id: PlayerId): Player {
+  const player = state.players[id];
+  if (!player) throw new Error(`unknown player: ${id}`);
+  return player;
+}
+
+/** The zone holding a player's hand, by convention `hand:<playerId>`. */
+export function handZoneId(playerId: PlayerId): ZoneId {
+  return `hand:${playerId}`;
+}
+
+export const DEFAULT_MATCH: MatchState = { rounds: 1, played: [] };
+
+/** Rank order for games that need one. Ace low, king high. */
+export const RANK_ORDER: readonly Rank[] = [
+  'A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K',
+] as const;
+
+/** 1 for an ace through 13 for a king; 0 for a joker, which has no place. */
+export function rankValue(rank: Rank): number {
+  return RANK_ORDER.indexOf(rank) + 1;
+}
+
+/**
+ * What a card is worth when counting up what someone was left holding: ace
+ * one, pip cards their own number, jack eleven, queen twelve, king thirteen.
+ *
+ * The same as `rankValue` today, and deliberately a separate function anyway
+ * -- rank order is about which card follows which, and card value is about
+ * scoring. Plenty of games disagree about one while agreeing on the other.
+ */
+export function cardPoints(rank: Rank): number {
+  if (rank === 'JOKER') return 0;
+  return rankValue(rank);
+}
+
+export const TABLE_ZONE: ZoneId = 'table';
+export const DECK_ZONE: ZoneId = 'deck';
+export const DISCARD_ZONE: ZoneId = 'discard';

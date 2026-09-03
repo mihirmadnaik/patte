@@ -1,0 +1,380 @@
+/**
+ * Everything the referee needs to say out loud.
+ *
+ * A rule the player cannot see feels like a bug, so this panel is not
+ * decoration: it is where "it is your turn", "you cannot pass because you are
+ * holding a playable card", and "here is who won" get stated plainly.
+ */
+
+import {
+  callerOf,
+  dealerOf,
+  getRuleset,
+  quotaFor,
+  stageOf,
+  tricksCredited,
+  trumpOf,
+  type GameState,
+  type PlayerId,
+  type Suit,
+} from '@patte/core';
+import { useState } from 'react';
+import { copyText } from '../clipboard.js';
+import type { Connection } from '../net.js';
+import { sounds } from '../sound.js';
+import { useStore } from '../store.js';
+import { Scoreboard } from './Scoreboard.js';
+
+/** The code, big enough to read aloud, with the link one tap away. */
+function RoomCode({ roomId }: { roomId: string }): React.JSX.Element {
+  const toast = useStore((s) => s.toast);
+  return (
+    <div className="joincode">
+      <span className="joincode__label">Table code</span>
+      <strong className="joincode__value">{roomId}</strong>
+      <button
+        onClick={() => {
+          void copyText(window.location.href).then((copied) =>
+            toast(copied ? 'Link copied — send it to whoever is playing' : `Share this code: ${roomId}`),
+          );
+        }}
+      >
+        Copy link
+      </button>
+    </div>
+  );
+}
+
+export function GamePanel({
+  state,
+  you,
+  net,
+}: {
+  state: GameState;
+  you: PlayerId;
+  net: Connection;
+}): React.JSX.Element | null {
+  const ruleset = getRuleset(state.rulesetId);
+  const [rounds, setRounds] = useState(state.match.rounds);
+
+  // A game can pause mid-deal for a decision. 7-8 does: the non-dealer names
+  // trump before anything is turned face up.
+  if (state.phase === 'playing' && ruleset.id === 'saat-aath' && stageOf(state) === 'calling') {
+    return <TrumpCall state={state} you={you} net={net} />;
+  }
+
+  if (ruleset.autoStart && state.phase === 'playing') return null; // free play needs no referee
+
+  const seated = state.seatOrder.length;
+  const enough = seated >= ruleset.minPlayers && seated <= ruleset.maxPlayers;
+  const isOwner = state.players[you]?.isOwner ?? false;
+  const name = (id: PlayerId): string => state.players[id]?.name ?? 'Player';
+  const played = state.match.played.length;
+  const matchOver = played >= state.match.rounds;
+
+  if (state.phase === 'lobby') {
+    return (
+      <div className="panel">
+        <div className="panel__card">
+          <h2>{ruleset.name}</h2>
+          <p>{ruleset.blurb}</p>
+
+          <RoomCode roomId={state.roomId} />
+
+          <ul className="panel__players">
+            {state.seatOrder.map((id) => (
+              <li key={id} className={state.players[id]?.connected ? '' : 'is-away'}>
+                {name(id)}
+                {id === you ? ' (you)' : ''}
+              </li>
+            ))}
+          </ul>
+
+          {isOwner && (
+            <label className="rounds">
+              Rounds to play
+              <span className="rounds__stepper">
+                <button
+                  onClick={() => {
+                    const next = Math.max(1, rounds - 1);
+                    setRounds(next);
+                    net.submit({ type: 'setMatchRounds', rounds: next });
+                  }}
+                  aria-label="one fewer round"
+                >
+                  −
+                </button>
+                <output>{state.match.rounds}</output>
+                <button
+                  onClick={() => {
+                    const next = Math.min(50, rounds + 1);
+                    setRounds(next);
+                    net.submit({ type: 'setMatchRounds', rounds: next });
+                  }}
+                  aria-label="one more round"
+                >
+                  +
+                </button>
+              </span>
+            </label>
+          )}
+
+          <button className="primary" disabled={!enough} onClick={() => net.submit({ type: 'startGame' })}>
+            Deal
+          </button>
+
+          <p className="panel__hint">
+            {enough
+              ? `Best of ${state.match.rounds} — the whole deck is dealt out each round.`
+              : `Needs ${ruleset.minPlayers}–${ruleset.maxPlayers} players. ${seated} here — share the code above.`}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (state.phase === 'finished') {
+    const winner = state.rankings[0];
+    const standing = ruleset.scoreboard?.(state) ?? [];
+    const leader = standing[0];
+
+    return (
+      <div className="panel">
+        <div className="panel__card panel__card--wide">
+          <h2>
+            {matchOver
+              ? leader
+                ? `${leader.playerId === you ? 'You win' : `${name(leader.playerId)} wins`} the match`
+                : 'Match over'
+              : (ruleset.roundSummary?.(state) ??
+                (winner === you ? 'You win the round' : `${name(winner ?? '')} wins the round`))}
+          </h2>
+          <p>
+            {matchOver
+              ? `${played} round${played === 1 ? '' : 's'} played.`
+              : `Round ${played} of ${state.match.rounds}.`}
+          </p>
+
+          <Scoreboard state={state} you={you} />
+
+          <button
+            className="primary"
+            onClick={() => net.submit({ type: 'startGame', ...(matchOver ? { reset: true } : {}) })}
+          >
+            {matchOver ? 'New match' : `Deal round ${played + 1}`}
+          </button>
+
+          {!matchOver && isOwner && (
+            <button className="ghost" onClick={() => net.submit({ type: 'endMatch' })}>
+              End the match here
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Where the turn status sits.
+ *
+ * `hand` is a pill centred just beneath your own cards, where you are already
+ * looking; the table reserves a band for it so nothing can reach down into it.
+ * `corner` tucks the same pill into the bottom-left instead, and `bar` gives
+ * it a full-width row of its own.
+ *
+ * Kept as one switch because this is still being settled; changing the layout
+ * should be a word here, not a rewrite.
+ */
+const PLACEMENT: 'hand' | 'corner' | 'bar' = 'hand';
+
+function shell(mine: boolean): string {
+  return `statusbar statusbar--${PLACEMENT}${mine ? ' is-mine' : ''}`;
+}
+
+/**
+ * The status readout: whose turn it is, and whatever single button is yours
+ * to press right now.
+ *
+ * Tucked in a corner it is easy to overlook, so it states its case loudly
+ * when something is actually being asked of you and recedes when it is not.
+ */
+export function StatusBar({
+  state,
+  you,
+  net,
+}: {
+  state: GameState;
+  you: PlayerId;
+  net: Connection;
+}): React.JSX.Element | null {
+  const ruleset = getRuleset(state.rulesetId);
+  if (!ruleset.legalCards || state.phase !== 'playing') return null;
+
+  const name = (id: PlayerId): string => state.players[id]?.name ?? 'Player';
+  const inline = ruleset.inlineChoice?.(state, you) ?? null;
+  const chooser = ruleset.awaitingChoice?.(state) ?? null;
+
+  // A pending decision that is not ours, and not a panel: say who we are
+  // waiting on rather than describing a turn that is not happening.
+  if (!inline && chooser && chooser !== you) {
+    return (
+      <div className={shell(false)}>
+        <span className="statusbar__text">Waiting for {name(chooser)}</span>
+      </div>
+    );
+  }
+
+  if (inline) {
+    return (
+      <div className={shell(true)}>
+        <span className="statusbar__text">You won that trick</span>
+        <button
+          className="statusbar__act"
+          onClick={() => {
+            net.submit({ type: 'choose', option: inline.option });
+            sounds.slide();
+          }}
+        >
+          {inline.label}
+        </button>
+      </div>
+    );
+  }
+
+  if (chooser) return null; // a panel is asking for something bigger
+
+  const legal = ruleset.legalCards(state, you);
+  const myTurn = state.turn === you;
+  const stuck = myTurn && legal.length === 0;
+  const pass = ruleset.passLabel;
+
+  return (
+    <div className={shell(myTurn)}>
+      <span className="statusbar__text">
+        {myTurn
+          ? stuck && pass
+            ? 'No valid plays'
+            : `Your turn — ${legal.length} playable`
+          : `Waiting for ${name(state.turn ?? '')}`}
+      </span>
+
+      {pass && (
+        <button
+          className="statusbar__act"
+          disabled={!stuck}
+          title={
+            myTurn
+              ? stuck
+                ? 'Pass the turn on'
+                : 'You are holding a playable card, so you must play it'
+              : 'Not your turn'
+          }
+          onClick={() => {
+            net.submit({ type: 'passTurn' });
+            sounds.pickup();
+          }}
+        >
+          {pass}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const SUIT_NAMES: Record<Suit, string> = { S: 'Spades', H: 'Hearts', D: 'Diamonds', C: 'Clubs' };
+const SUIT_GLYPHS: Record<Suit, string> = { S: '♠', H: '♥', D: '♦', C: '♣' };
+
+/**
+ * The pause in the middle of the deal.
+ *
+ * The non-dealer picks trump on the strength of five cards and nothing else,
+ * which is why the ten table cards stay face down until this is answered.
+ */
+function TrumpCall({
+  state,
+  you,
+  net,
+}: {
+  state: GameState;
+  you: PlayerId;
+  net: Connection;
+}): React.JSX.Element {
+  const caller = callerOf(state);
+  const mine = caller === you;
+
+  return (
+    <div className="panel panel--soft">
+      <div className="panel__card">
+        <h2>{mine ? 'Call trump' : 'Waiting for trump'}</h2>
+        <p>
+          {mine
+            ? 'You have five cards. Name a trump suit — then the table cards are turned up and you lead.'
+            : `${state.players[caller ?? '']?.name ?? 'The other player'} is choosing a trump suit.`}
+        </p>
+
+        {mine && (
+          <div className="suits">
+            {(['S', 'H', 'D', 'C'] as Suit[]).map((suit) => (
+              <button
+                key={suit}
+                className={`suits__pick${suit === 'H' || suit === 'D' ? ' is-red' : ''}`}
+                onClick={() => net.submit({ type: 'choose', option: suit })}
+              >
+                <span className="suits__glyph">{SUIT_GLYPHS[suit]}</span>
+                {SUIT_NAMES[suit]}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <p className="panel__hint">
+          You must take {mine ? 8 : 7} of the 15 tricks{mine ? '' : ' as dealer'}.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * What is at stake, kept on screen throughout.
+ *
+ * In 7-8 the two facts that decide everything -- what is trump and how close
+ * each player is to their quota -- are otherwise invisible: trump lives in the
+ * ruleset's scratchpad and tricks won are just the size of a pile.
+ */
+export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }): React.JSX.Element | null {
+  if (getRuleset(state.rulesetId).id !== 'saat-aath') return null;
+  if (state.phase !== 'playing' || stageOf(state) !== 'playing') return null;
+
+  const trump = trumpOf(state);
+  if (!trump) return null;
+
+  const dealer = dealerOf(state);
+  const name = (id: PlayerId): string => (id === you ? 'You' : (state.players[id]?.name ?? 'Player'));
+
+  return (
+    <div className="trumpstrip">
+      <span className={`trumpstrip__trump${trump === 'H' || trump === 'D' ? ' is-red' : ''}`}>
+        <em>trump</em>
+        {SUIT_GLYPHS[trump]}
+      </span>
+
+      {state.inPlay.map((playerId) => {
+        const won = tricksCredited(state, playerId);
+        const quota = quotaFor(state, playerId);
+        return (
+          <span key={playerId} className={`trumpstrip__player${won >= quota ? ' is-met' : ''}`}>
+            <em>
+              {name(playerId)}
+              {playerId === dealer ? ' (deals)' : ''}
+            </em>
+            {won}<i>/{quota}</i>
+          </span>
+        );
+      })}
+    </div>
+  );
+}

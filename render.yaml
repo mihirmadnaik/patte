@@ -1,0 +1,19 @@
+# Render, free tier.
+#
+# The free instance stops when nothing has called it for a while and starts
+# again on the next request, which takes half a minute or so. Because rooms
+# live in memory, a stop ends every table -- so this is a fine way to play
+# with people who are all here now, and not a way to keep a table waiting
+# overnight. Persistence is what would change that, not a bigger instance.
+services:
+  - type: web
+    name: patte
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      # Render provides PORT; the rest the image already sets.
+      - key: MAX_ROOMS
+        value: 500
+      - key: CREATE_LIMIT
+        value: 30

@@ -45,6 +45,21 @@ const RANKING: readonly Rank[] = ['A', 'K', 'Q', 'J', '10', '9', '8', '7'] as co
 const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'] as const;
 /** The order a hand is grouped in when sorted: the two reds kept apart. */
 const HAND_SUITS: readonly Suit[] = ['S', 'H', 'C', 'D'] as const;
+/** Touching your own cards: never a move, so never the ruleset's to refuse. */
+const HANDLING: readonly Intent['type'][] = ['grab', 'release', 'peek'];
+/**
+ * Suits in words, for the things this ruleset says out loud.
+ *
+ * User-facing text belongs to the ruleset -- it already owns its name, its
+ * blurb and how its scores read -- so a suit it needs to announce is spelled
+ * here rather than translated back by whoever displays it.
+ */
+const SUIT_LABEL: Record<Suit, string> = {
+  S: '♠ spades',
+  H: '♥ hearts',
+  D: '♦ diamonds',
+  C: '♣ clubs',
+};
 
 /** Every seven except the two the pack keeps. */
 const DROPPED_SEVENS = ['C7', 'D7'] as const;
@@ -283,6 +298,20 @@ export const saatAath: Ruleset = {
   scoreNote: 'You score how far past your quota you got. Highest total leads.',
   // No passing: you always hold something you are allowed to play.
 
+  /**
+   * Trump, said out loud to the player who did not choose it.
+   *
+   * The caller looked at five cards and picked; the dealer finds out. Until
+   * this, that news arrived only as a suit quietly appearing in the toolbar,
+   * which is no way to learn the single fact that governs the whole hand.
+   */
+  announce(state: GameState, event: GameEvent, viewer: PlayerId): string | null {
+    if (event.type !== 'chosen' || event.actor === viewer) return null;
+    const trump = trumpOf(state);
+    if (!trump || event.option !== trump) return null;
+    return `Trump is ${SUIT_LABEL[trump]}`;
+  },
+
   inlineChoice(state: GameState, playerId: PlayerId): { label: string; option: string } | null {
     return trickAwaitingCollection(state) === playerId
       ? { label: 'Take the trick', option: TAKE }
@@ -377,7 +406,7 @@ export const saatAath: Ruleset = {
         if (!SUITS.includes(intent.option as Suit)) return { ok: false, reason: 'pick a suit' };
         return ALLOW;
       }
-      return TABLE_INTENTS.includes(intent.type) || intent.type === 'peek'
+      return TABLE_INTENTS.includes(intent.type) || HANDLING.includes(intent.type)
         ? ALLOW
         : { ok: false, reason: 'waiting for trump to be called' };
     }
@@ -424,18 +453,15 @@ export const saatAath: Ruleset = {
         return { ok: false, reason: led ? `you must follow ${led}` : 'you cannot play that' };
       }
 
-      case 'startGame':
-      case 'setMatchRounds':
-      case 'endMatch':
-      case 'declare':
-      case 'rename':
-      case 'grab':
-      case 'release':
-      case 'peek':
-        return ALLOW;
-
       default:
-        return { ok: false, reason: 'not part of this game' };
+        // Handling your own cards, and administering the table, are not moves
+        // in the game -- so they are allowed here by the same list the other
+        // stages use rather than by a case for each. Spelled out stage by
+        // stage, this switch was the one that forgot the redeal intents and
+        // refused them as "not part of this game".
+        return TABLE_INTENTS.includes(intent.type) || HANDLING.includes(intent.type)
+          ? ALLOW
+          : { ok: false, reason: 'not part of this game' };
     }
   },
 

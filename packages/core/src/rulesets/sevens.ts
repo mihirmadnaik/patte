@@ -48,6 +48,8 @@ import {
 const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'] as const;
 /** The order a hand is grouped in when sorted: the two reds kept apart. */
 const HAND_SUITS: readonly Suit[] = ['S', 'H', 'C', 'D'] as const;
+/** Touching your own cards: never a move, so never the ruleset's to refuse. */
+const HANDLING: readonly Intent['type'][] = ['grab', 'release', 'peek'];
 /**
  * The card that opens the game, and the reason for the name: *badam* is
  * hearts, *saat* is seven.
@@ -305,20 +307,14 @@ export const sevens: Ruleset = {
 
       // Nothing else belongs in a game of Sevens. The deck is fully dealt, so
       // there is nothing to shuffle, draw or turn over.
-      case 'startGame':
-      case 'proposeRedeal':
-      case 'answerRedeal':
-      case 'setMatchRounds':
-      case 'endMatch':
-      case 'declare':
-      case 'rename':
-      case 'grab':
-      case 'release':
-      case 'peek':
-        return ALLOW;
-
       default:
-        return { ok: false, reason: 'not part of this game' };
+        // Administering the table and handling your own cards are not moves in
+        // the game. Read from one shared list rather than restated as cases,
+        // so a new table-level intent cannot be allowed in one ruleset and
+        // refused in another.
+        return TABLE_INTENTS.includes(intent.type) || HANDLING.includes(intent.type)
+          ? ALLOW
+          : { ok: false, reason: 'not part of this game' };
     }
   },
 

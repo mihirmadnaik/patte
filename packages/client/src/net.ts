@@ -13,10 +13,12 @@ import {
   PROTOCOL_VERSION,
   applyVisibilityDelta,
   emptyState,
+  getRuleset,
   isPredictable,
   randomUuid,
   reduce,
   type ClientMessage,
+  type GameEvent,
   type GameState,
   type Intent,
   type ServerMessage,
@@ -299,13 +301,21 @@ export class Connection {
    * look at the deck unobserved is a different game. So the look is announced
    * even though the card is not.
    */
-  private announce(events: readonly { type: string; actor: string | null }[], state: GameState): void {
+  private announce(events: readonly GameEvent[], state: GameState): void {
     const store = useStore.getState();
+    const ruleset = getRuleset(state.rulesetId);
+
     for (const event of events) {
-      if (event.type !== 'cardsPeeked') continue;
-      if (event.actor === null || event.actor === store.you) continue;
-      const name = state.players[event.actor]?.name ?? 'Someone';
-      store.toast(`${name} took a look at a card`);
+      if (event.type === 'cardsPeeked' && event.actor !== null && event.actor !== store.you) {
+        const name = state.players[event.actor]?.name ?? 'Someone';
+        store.toast(`${name} took a look at a card`);
+      }
+
+      // Whatever the game itself wants said. Asked of the ruleset rather than
+      // worked out here: which events matter, and how they read, is the
+      // game's business, not the transport's.
+      const line = store.you ? ruleset.announce?.(state, event, store.you) : null;
+      if (line) store.declare(line);
     }
   }
 

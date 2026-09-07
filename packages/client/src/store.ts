@@ -16,6 +16,8 @@ export type Status = 'connecting' | 'connected' | 'reconnecting' | 'error';
 /** How long a peeked face stays on screen before it slides back down. */
 const PEEK_MS = 2_500;
 const TOAST_MS = 2_600;
+/** Long enough to read a short line without breaking the rhythm of a deal. */
+const FLASH_MS = 2_800;
 
 export interface Toast {
   id: number;
@@ -41,6 +43,14 @@ interface Store {
   selection: CardId[];
   /** Whether your own hand is shown in reading order rather than as dealt. */
   handSorted: boolean;
+  /**
+   * One thing the table is saying right now, large and briefly.
+   *
+   * Not a toast: a toast is a note in the corner for something that has
+   * happened elsewhere, and trump being named is the fact the rest of the hand
+   * is played against. It gets the middle of the screen for a moment.
+   */
+  flash: string | null;
   toasts: Toast[];
 
   setStatus(status: Status, message?: string): void;
@@ -54,6 +64,7 @@ interface Store {
   toggleSelected(cardId: CardId): void;
   clearSelection(): void;
   toggleHandSorted(): void;
+  declare(text: string): void;
   /** Forget this table entirely, on the way back to the lobby. */
   reset(): void;
   toast(text: string, kind?: Toast['kind']): void;
@@ -72,6 +83,7 @@ export const useStore = create<Store>((set, get) => ({
   peeked: {},
   selection: [],
   handSorted: false,
+  flash: null,
   toasts: [],
 
   setStatus(status, message) {
@@ -149,6 +161,15 @@ export const useStore = create<Store>((set, get) => ({
     set({ handSorted: !get().handSorted });
   },
 
+  declare(text) {
+    set({ flash: text });
+    setTimeout(() => {
+      // Only clear our own announcement: a second one arriving in the meantime
+      // is the current one, and cancelling it would blank the screen early.
+      if (get().flash === text) set({ flash: null });
+    }, FLASH_MS);
+  },
+
   /*
    * Leaving has to empty this, not just stop listening.
    *
@@ -168,6 +189,7 @@ export const useStore = create<Store>((set, get) => ({
       cursors: [],
       peeked: {},
       selection: [],
+      flash: null,
     });
   },
 

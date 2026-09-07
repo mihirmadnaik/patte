@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Flash } from './components/Flash.js';
 import { GamePanel, StatusBar, TrumpStrip } from './components/GamePanel.js';
 import { Lobby } from './components/Lobby.js';
 import { TableView } from './components/TableView.js';
@@ -119,6 +120,7 @@ export function App(): React.JSX.Element {
       <TableView state={view} you={you} net={net} />
       <StatusBar state={view} you={you} net={net} />
       <GamePanel state={view} you={you} net={net} />
+      <Flash />
       <Toasts />
     </div>
   );

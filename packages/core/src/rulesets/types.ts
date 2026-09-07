@@ -195,6 +195,19 @@ export interface Ruleset {
   inlineChoice?(state: GameState, playerId: PlayerId): { label: string; option: string } | null;
 
   /**
+   * Something worth saying out loud to one player, as it happens.
+   *
+   * A card game is full of moments a physical table conveys by itself: trump
+   * being named, someone tilting a card up to look at it. On a screen they
+   * pass silently unless something says so. The viewer is a parameter because
+   * most of these are worth saying to everyone *except* the person who did it.
+   *
+   * Returns null for events this ruleset has nothing to say about, which is
+   * almost all of them.
+   */
+  announce?(state: GameState, event: GameEvent, viewer: PlayerId): string | null;
+
+  /**
    * What to announce when a round ends.
    *
    * The default -- "so-and-so wins" from `rankings[0]` -- assumes there is

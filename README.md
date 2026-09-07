@@ -126,6 +126,19 @@ playable, and the client lights up exactly the cards the engine would accept —
 asked of the ruleset, not reimplemented in the UI, so the highlight and the
 verdict can never disagree.
 
+**Trump is announced.** When the non-dealer names it, the other player gets it
+said to them in the middle of the table for a moment — it is the fact the whole
+hand is played against, and it used to arrive only as a suit quietly appearing
+in the toolbar. Which events are worth saying, and how they read, is the
+ruleset's business: `announce(state, event, viewer)` returns a line or null,
+and it takes the viewer because most of these are worth saying to everyone
+*except* the person who did it.
+
+**The trump call sits at the top of the table**, not in the middle of it.
+Naming trump means reading five cards while you decide, so the one panel that
+must not cover your hand does not: measured at 393×700, it ends 26px above the
+first card.
+
 **Dealing again needs agreement.** The Redeal button asks rather than acts:
 everyone still in the game has to say yes, and one refusal ends it. Whoever
 asks has already seen their cards, so an unchecked redeal is a way to keep
@@ -275,6 +288,21 @@ placement, never restated alongside it.** Three separate faults came from the
 two drifting apart — Sevens rows that never shrank, rows that rode up over the
 opponents, and rows that ran into the hand. `rowsTop` and `handTop` are now
 shared by both.
+
+## Administering a table is not a move
+
+A ruleset decides what is a legal *move*. None of them decides whether the
+table may be dealt again, renamed, or stopped — so those intents live in one
+shared `TABLE_INTENTS` list that every ruleset reads, rather than in an
+allow-list each ruleset keeps per stage.
+
+That is not tidiness. 7-8 states its allowances stage by stage — during the
+trump call, during play, with a trick waiting — and when the redeal intents
+were added, one of those stages was not told about them. Redeal worked in the
+trump call and was refused during play as *"not part of this game"*. The
+regression test walks every stage of both rulesets and asserts that no
+table-level intent is ever answered that way; reverting the fix fails it four
+times over.
 
 ## A note on stacking
 

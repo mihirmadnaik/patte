@@ -17,6 +17,18 @@
   --red: #c0392b;
   --accent: #f0c04a;
   --shadow: 0 2px 4px rgba(0, 0, 0, 0.28), 0 8px 18px rgba(0, 0, 0, 0.22);
+  /*
+   * The two rings that carry meaning, and how heavy they are.
+   *
+   * Both used to be a single pixel of colour, which was enough while they were
+   * decoration. They are not decoration any more: the gold ring is now the
+   * whole statement that it is your turn, and the orange one is how you find
+   * the card that was just played. Kept here because they are the sort of
+   * thing that wants adjusting by eye, on a real screen.
+   */
+  --turn-ring: 2px;
+  --last-play: #ff8a3d;
+  --last-play-ring: 3px;
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
   color-scheme: dark;
@@ -190,6 +202,8 @@ html, body, #root {
 .seat {
   position: absolute;
   transform: translate(-50%, -50%);
+  /* Reserved whether or not it is their turn, so the plate does not resize
+     under the name when the turn comes round. */
   text-align: center;
   /* Above the cards. The layout keeps them apart, but a name plate that can
      be buried by a card is the one failure this must not have. */
@@ -197,13 +211,16 @@ html, body, #root {
   padding: 6px 12px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.34);
-  border: 1px solid transparent;
+  border: var(--turn-ring) solid transparent;
   transition: border-color 200ms var(--ease), opacity 200ms var(--ease);
 }
 
 .seat__name { display: block; font-size: 13px; font-weight: 600; }
 .seat__count { display: block; font-size: 11px; opacity: 0.65; }
-.seat.is-turn { border-color: var(--accent); box-shadow: 0 0 16px rgba(240, 192, 74, 0.35); }
+.seat.is-turn {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 var(--turn-ring) rgba(240, 192, 74, 0.25), 0 0 18px rgba(240, 192, 74, 0.38);
+}
 .seat.is-away { opacity: 0.4; }
 
 /* --- cards -------------------------------------------------------------- */
@@ -822,14 +839,25 @@ html, body, #root {
 .menu .scoreboard { margin: 12px 0 0; }
 
 /* The card just played, so everyone can see what happened. */
+/*
+ * The card that was just played.
+ *
+ * Orange rather than the pale blue it was: on a green table the blue read as
+ * one more cool colour among the card backs and the felt, and this is the one
+ * mark on the table you go looking for.
+ */
 .card.is-last-play {
-  box-shadow: 0 0 0 2px #7fd7ff, 0 0 18px rgba(127, 215, 255, 0.5), var(--shadow);
+  box-shadow: 0 0 0 var(--last-play-ring) var(--last-play), 0 0 20px rgba(255, 138, 61, 0.55),
+    var(--shadow);
   animation: just-played 620ms var(--ease);
 }
 
 @keyframes just-played {
-  0% { box-shadow: 0 0 0 5px rgba(127, 215, 255, 0.8), 0 0 30px rgba(127, 215, 255, 0.7); }
-  100% { box-shadow: 0 0 0 2px #7fd7ff, 0 0 18px rgba(127, 215, 255, 0.5), var(--shadow); }
+  0% { box-shadow: 0 0 0 6px rgba(255, 138, 61, 0.85), 0 0 32px rgba(255, 138, 61, 0.75); }
+  100% {
+    box-shadow: 0 0 0 var(--last-play-ring) var(--last-play), 0 0 20px rgba(255, 138, 61, 0.55),
+      var(--shadow);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -950,8 +978,10 @@ html, body, #root {
  */
 .statusbar {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 12px;
+  gap: 4px 12px;
   font-size: 13px;
   z-index: 9000;
 }
@@ -969,10 +999,10 @@ html, body, #root {
 .statusbar--corner {
   position: fixed;
   bottom: 12px;
-  padding: 8px 10px 8px 15px;
-  border-radius: 999px;
+  padding: 8px 14px;
+  border-radius: 22px;
   background: rgba(6, 12, 9, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: var(--turn-ring) solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(6px);
   /* Recedes while it is somebody else's move. */
   opacity: 0.72;
@@ -1000,7 +1030,7 @@ html, body, #root {
 .statusbar--corner.is-mine {
   opacity: 1;
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px rgba(240, 192, 74, 0.25), 0 6px 24px rgba(240, 192, 74, 0.18);
+  box-shadow: 0 0 0 var(--turn-ring) rgba(240, 192, 74, 0.28), 0 6px 24px rgba(240, 192, 74, 0.2);
 }
 
 /* Its own row beneath the table. Cannot overlap; costs a row of height. */
@@ -1020,14 +1050,16 @@ html, body, #root {
 }
 
 /*
- * One line, always.
+ * A line of its own, when there is one at all.
  *
- * The pill shrink-wraps its contents, so without this a third child squeezes
- * the sentence into a narrow column and it wraps to three lines -- which is
- * how adding a card count turned "Waiting for Player" into a paragraph. A
- * name long enough to still not fit is trimmed rather than folded.
+ * Taking the full width pushes whatever follows onto the next row, which is
+ * what gives the pill its two-row shape without a second container: a name to
+ * wait for above, the count below. With no text there is one row, and the
+ * pill shrinks to it.
  */
 .statusbar__text {
+  flex: 0 0 100%;
+  text-align: center;
   opacity: 0.85;
   white-space: nowrap;
   overflow: hidden;

@@ -290,6 +290,15 @@ export function StatusBar({
   const name = (id: PlayerId): string => state.players[id]?.name ?? 'Player';
   const inline = ruleset.inlineChoice?.(state, you) ?? null;
   const chooser = ruleset.awaitingChoice?.(state) ?? null;
+  // Everyone else's count is on their name plate; yours was the one number on
+  // the table you had to work out by counting. In Sevens that matters -- being
+  // out of cards is how you win, so how close you are is the score.
+  const held = state.zones[`hand:${you}`]?.cards.length ?? 0;
+  const cards = (
+    <span className="statusbar__held">
+      {held} card{held === 1 ? '' : 's'}
+    </span>
+  );
 
   // A pending decision that is not ours, and not a panel: say who we are
   // waiting on rather than describing a turn that is not happening.
@@ -297,6 +306,7 @@ export function StatusBar({
     return (
       <div className={shell(false)}>
         <span className="statusbar__text">Waiting for {name(chooser)}</span>
+        {cards}
       </div>
     );
   }
@@ -305,6 +315,7 @@ export function StatusBar({
     return (
       <div className={shell(true)}>
         <span className="statusbar__text">You won that trick</span>
+        {cards}
         <button
           className="statusbar__act"
           onClick={() => {
@@ -324,36 +335,30 @@ export function StatusBar({
   const myTurn = state.turn === you;
   const stuck = myTurn && legal.length === 0;
   const pass = ruleset.passLabel;
-  // Everyone else's count is on their name plate; yours was the one number on
-  // the table you had to work out by counting. In Sevens that matters -- being
-  // out of cards is how you win, so how close you are is the score.
-  const held = state.zones[`hand:${you}`]?.cards.length ?? 0;
 
+  /*
+   * What the pill says, and what it leaves to be seen.
+   *
+   * Your turn used to be announced in words and counted in words -- "Your turn
+   * -- 5 playable" -- next to a button that could not be pressed. All three
+   * were saying something the table was already showing: the pill lights up,
+   * the playable cards light up, and a button that cannot be pressed is not an
+   * offer. So the words go, and what is left is the count you cannot get any
+   * other way.
+   *
+   * The one exception is being stuck, where there *is* something to do and
+   * nothing on the table to suggest it. Then the button appears, and its
+   * appearing is the whole message -- it only ever shows when passing is the
+   * only move left.
+   */
   return (
     <div className={shell(myTurn)}>
-      <span className="statusbar__text">
-        {myTurn
-          ? stuck && pass
-            ? 'No valid plays'
-            : `Your turn — ${legal.length} playable`
-          : `Waiting for ${name(state.turn ?? '')}`}
-      </span>
-
-      <span className="statusbar__held">
-        {held} card{held === 1 ? '' : 's'}
-      </span>
-
-      {pass && (
+      {!myTurn && <span className="statusbar__text">Waiting for {name(state.turn ?? '')}</span>}
+      {cards}
+      {stuck && pass && (
         <button
           className="statusbar__act"
-          disabled={!stuck}
-          title={
-            myTurn
-              ? stuck
-                ? 'Pass the turn on'
-                : 'You are holding a playable card, so you must play it'
-              : 'Not your turn'
-          }
+          title="Nothing you hold can be played — pass the turn on"
           onClick={() => {
             net.submit({ type: 'passTurn' });
             sounds.pickup();

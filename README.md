@@ -337,9 +337,26 @@ and any hardcoded guess would cover the room code — measured, it comes out at
 
 ## A note on the status readout
 
-It carries your own card count, since everyone else's is on their name plate
-and yours was the one number on the table you had to work out by counting. In
-Sevens that is close to the score: being out of cards is how you win.
+It says as little as it can, because the table is already saying most of it.
+Your turn used to be announced in words and counted in words — *"Your turn —
+5 playable"* — beside a button that could not be pressed. The pill lights up,
+the playable cards light up, and a button that cannot be pressed is not an
+offer, so all three went. What is left is your own card count, which is the one
+thing you cannot read off the table: everyone else's is on their name plate,
+and in Sevens it is close to the score, since being out of cards is how you
+win.
+
+So the pill has three shapes. Somebody else's turn: their name over your
+count, unlit, no button. Your turn: the count, lit. Nothing you can play: the
+count and the pass button, lit — the button appearing *is* the message, since
+it only ever shows when passing is the only move left.
+
+The gold ring and the orange one both carry meaning now rather than decorating,
+so both are heavier than they were, and both are single values in `:root` —
+`--turn-ring` and `--last-play-ring` — because that is the sort of thing you
+adjust by eye on a real screen. The last card played is orange rather than the
+pale blue it was: on a green table the blue read as one more cool colour among
+the felt and the card backs, and it is the one mark you go looking for.
 
 Whose turn it is, and the one button that is yours to press, sit in a pill
 centred just beneath your own cards, where you are already looking. The table

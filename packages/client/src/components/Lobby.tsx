@@ -1,4 +1,4 @@
-import { RULESETS } from '@patte/core';
+import { OFFERED_RULESETS } from '@patte/core';
 import { useState } from 'react';
 
 /** Create a table or join one by code. No accounts, no lobby, no matchmaking. */
@@ -13,11 +13,11 @@ export function Lobby({
   const [name, setName] = useState(() => localStorage.getItem('patte:name') ?? '');
   const [code, setCode] = useState(lastRoom ?? '');
   const [busy, setBusy] = useState(false);
-  const [rulesetId, setRulesetId] = useState(RULESETS[0]!.id);
+  const [rulesetId, setRulesetId] = useState(OFFERED_RULESETS[0]!.id);
   const [rounds, setRounds] = useState(3);
 
   // Only games with a scoreboard have anything to say about match length.
-  const chosen = RULESETS.find((ruleset) => ruleset.id === rulesetId);
+  const chosen = OFFERED_RULESETS.find((ruleset) => ruleset.id === rulesetId);
   const multiRound = chosen !== undefined && !chosen.autoStart;
 
   const remember = (): string => {
@@ -44,7 +44,7 @@ export function Lobby({
   return (
     <div className="lobby">
       <div className="lobby__card">
-        <h1>Patte</h1>
+        <h1>पत्ते</h1>
         <p>A deck, a table, and whoever you send the link to.</p>
 
         <label>
@@ -54,7 +54,7 @@ export function Lobby({
 
         <fieldset className="games">
           <legend>Game</legend>
-          {RULESETS.map((ruleset) => (
+          {OFFERED_RULESETS.map((ruleset) => (
             <label key={ruleset.id} className={rulesetId === ruleset.id ? 'is-chosen' : ''}>
               <input
                 type="radio"

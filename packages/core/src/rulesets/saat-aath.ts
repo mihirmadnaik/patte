@@ -271,7 +271,7 @@ function trickZone(): Zone {
 
 export const saatAath: Ruleset = {
   id: 'saat-aath',
-  name: '7-8',
+  name: 'सात-आठ',
   blurb: 'Two players, thirty cards. Call trump and take your quota of tricks — eight, or seven.',
   // Strongest first, which is `RANKING` -- the same order the game itself
   // ranks cards in, so a sorted hand reads as "what can beat what".

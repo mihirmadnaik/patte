@@ -335,7 +335,30 @@ html, body, #root {
   background: radial-gradient(ellipse at 50% 35%, #23604a, #0e1512 70%);
 }
 
-.lobby__card, .waiting p { margin: auto; }
+.lobby__card, .waiting__card { margin: auto; }
+
+/* The dead end, with a door in it. */
+.waiting__card {
+  width: min(360px, 90vw);
+  text-align: center;
+  padding: 0 20px;
+}
+
+.waiting__card p { margin: 0 0 18px; line-height: 1.55; }
+
+.waiting__home {
+  font: inherit;
+  font-size: 14px;
+  padding: 11px 20px;
+  border-radius: 10px;
+  border: 1px solid #4a3826;
+  background: linear-gradient(#3a2b1c, #2c2015);
+  color: #f0e6d8;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.waiting__home:hover { background: linear-gradient(#4a3724, #362717); }
 
 .lobby__card {
   width: min(360px, 90vw);

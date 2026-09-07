@@ -98,13 +98,17 @@ denied action nothing more than leaving it out of the replay.
 
 Pick a game when you start a table.
 
-**Free play** — the sandbox, in full: deal, shuffle, drag single cards or a
-selection, flip, hand-to-hand passing, free placement on the felt,
-hold-to-peek (private, but the table is told you looked), gather everything
-back up, manual turn order, live cursors, per-table options, and
-reconnect-to-your-seat.
+**Free play is built but not currently offered.** It is the *null* ruleset —
+the one that permits everything, which the refereed games are defined as
+restrictions of — so the engine is built on it and much of the engine's test
+suite is written against it. It is left out of `OFFERED_RULESETS` rather than
+out of `RULESETS`: one line to put back, and the base case stays where the
+architecture needs it. The sandbox verbs (deal, shuffle, gather, free
+placement on the felt, hand-to-hand passing, manual turn order) are all still
+there behind it.
 
-**Sevens** (also Fan Tan, Card Dominoes, Parliament) — refereed. The whole deck
+**बदाम सात** (Badam Saat — elsewhere Sevens, Fan Tan, Card Dominoes,
+Parliament) — refereed. The whole deck
 is dealt out; four rows are built on the table, one per suit, each growing
 outward from its seven. First player out of cards wins, and the rest are ranked
 by what they were left holding.
@@ -112,7 +116,7 @@ by what they were left holding.
 Two house rules are pinned down, since both vary in the wild:
 
 - **Ace is low.** Rows run A-2-…-7-…-K.
-- **The holder of the seven of diamonds opens** and must play it. The
+- **The holder of the seven of hearts opens** and must play it. The
   alternative — the player left of the dealer begins — can open with a forced
   pass, which is a poor first move in a game people are learning.
 
@@ -122,7 +126,7 @@ playable, and the client lights up exactly the cards the engine would accept —
 asked of the ruleset, not reimplemented in the UI, so the highlight and the
 verdict can never disagree.
 
-**7-8** (Saat-Aath) — two players, thirty cards, fifteen tricks. Each stack shows the
+**सात-आठ** (Saat-Aath, 7-8) — two players, thirty cards, fifteen tricks. Each stack shows the
 back of its buried card peeking out from under the face-up one, so you can see
 at a glance which stacks still hold something and which are down to their last
 card. A decided trick stays face up in the middle until its winner presses

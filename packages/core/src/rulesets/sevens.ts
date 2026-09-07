@@ -1,5 +1,6 @@
 /**
- * Sevens, also called Fan Tan, Card Dominoes or Parliament.
+ * Badam Saat -- बदाम सात -- the Indian name for the game played elsewhere as
+ * Sevens, Fan Tan, Card Dominoes or Parliament.
  *
  * The whole deck is dealt out. Four rows are built on the table, one per suit,
  * each starting from its seven and growing outward -- six, five, four down one
@@ -10,9 +11,11 @@
  *
  *   - **Ace is low.** Rows run A-2-...-7-...-K. Some traditions rank the ace
  *     above the king instead.
- *   - **The holder of the seven of diamonds opens** and must play it. The
- *     alternative -- the player left of the dealer begins -- can open with a
- *     forced pass, which is a poor first move in a game people are learning.
+ *   - **The holder of the seven of hearts opens** and must play it. Hearts is
+ *     what the game is named for -- *badam* is the hearts suit -- and it is
+ *     the suit this version has always been dealt around. The alternative --
+ *     the player left of the dealer begins -- can open with a forced pass,
+ *     which is a poor first move in a game people are learning.
  *
  * The rule worth having a computer for is the one a physical table cannot
  * check: **you must play if you can.** Passing is legal only when you are
@@ -45,7 +48,15 @@ import {
 const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'] as const;
 /** The order a hand is grouped in when sorted: the two reds kept apart. */
 const HAND_SUITS: readonly Suit[] = ['S', 'H', 'C', 'D'] as const;
-const OPENING_CARD = 'D7';
+/**
+ * The card that opens the game, and the reason for the name: *badam* is
+ * hearts, *saat* is seven.
+ *
+ * Exported so that the tests, and anything else that has to know how a game
+ * begins, ask the ruleset rather than each keeping their own copy of the
+ * answer.
+ */
+export const OPENING_CARD = 'H7';
 const SEVEN = 7;
 
 export function rowZoneId(suit: Suit): ZoneId {
@@ -127,7 +138,7 @@ export function legalCards(state: GameState, playerId: PlayerId): CardId[] {
   const hand = state.zones[`hand:${playerId}`];
   if (!hand) return [];
 
-  // Before anything is down, only the seven of diamonds opens.
+  // Before anything is down, only the seven of hearts opens.
   const opening = Object.values(state.zones).every(
     (zone) => zone.kind !== 'row' || zone.cards.length === 0,
   );
@@ -139,7 +150,7 @@ export function legalCards(state: GameState, playerId: PlayerId): CardId[] {
   });
 }
 
-/** Whose deal it is to open: whoever holds the seven of diamonds. */
+/** Whose deal it is to open: whoever holds the seven of hearts. */
 function openerOf(zones: Zone[]): PlayerId | null {
   for (const zone of zones) {
     if (zone.kind === 'hand' && zone.cards.includes(OPENING_CARD)) return zone.owner;
@@ -184,7 +195,7 @@ export function roundScores(state: GameState): Record<PlayerId, number> {
 
 export const sevens: Ruleset = {
   id: 'sevens',
-  name: 'Sevens',
+  name: 'बदाम सात',
   blurb: 'Build each suit outward from its seven. First player out of cards wins.',
   // Three or more is the real game; two is allowed so a table can be tried out.
   minPlayers: 2,
@@ -284,7 +295,7 @@ export const sevens: Ruleset = {
           };
         }
         if (legalCards(state, actor).length > 0 && !legalCards(state, actor).includes(cardId)) {
-          return { ok: false, reason: 'the seven of diamonds opens the game' };
+          return { ok: false, reason: 'the seven of hearts opens the game' };
         }
         return ALLOW;
       }

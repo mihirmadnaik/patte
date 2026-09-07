@@ -67,7 +67,11 @@ export function App(): React.JSX.Element {
     const url = new URL(window.location.href);
     url.searchParams.delete('t');
     window.history.pushState(null, '', url);
-    setLastRoom(room);
+    // Only worth offering back if there is something to go back to. A table
+    // that just told us it no longer exists is not somewhere to send anybody
+    // again, and the lobby's "your seat and your hand are still there" would
+    // be a straightforward lie about it.
+    setLastRoom(useStore.getState().status === 'error' ? null : room);
     setRoom(null);
     useStore.getState().reset();
   }, [room]);
@@ -88,9 +92,20 @@ export function App(): React.JSX.Element {
   if (!room || !net) return <Lobby onEnter={enter} lastRoom={lastRoom} />;
 
   if (!view || !you) {
+    // Something went wrong is a dead end without a way out of it. The code is
+    // in the URL that just failed, so a person who followed a link to a table
+    // that has gone has nowhere to go and nothing to press -- they would have
+    // to know to edit the address bar, which nobody does on a phone.
     return (
       <div className="waiting">
-        <p>{status === 'error' ? (statusMessage ?? 'Something went wrong') : 'Pulling up a chair…'}</p>
+        <div className="waiting__card">
+          <p>{status === 'error' ? (statusMessage ?? 'Something went wrong') : 'Pulling up a chair…'}</p>
+          {status === 'error' && (
+            <button className="waiting__home" onClick={leave}>
+              Go to the home screen
+            </button>
+          )}
+        </div>
       </div>
     );
   }

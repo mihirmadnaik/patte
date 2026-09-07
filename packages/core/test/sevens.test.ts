@@ -8,6 +8,7 @@ import {
   isPlayable,
   legalCards,
   makeRng,
+  OPENING_CARD,
   projectFor,
   rankValue,
   rowZoneId,
@@ -17,6 +18,14 @@ import {
 } from '../src/index.js';
 
 const PLAYERS = ['ana', 'ben', 'cal'];
+/**
+ * The opener, and the row it lands in, taken from the ruleset rather than
+ * spelled out here. Which seven starts the game is the ruleset's business --
+ * these tests are about what follows from it.
+ */
+const OPENER = OPENING_CARD;
+const OPENER_SUIT = OPENER[0]!;
+const OPENER_ROW = rowZoneId(OPENER_SUIT as 'S');
 
 function sevensTable(seed = 1, players = PLAYERS): Table {
   let clock = 1_700_000_000_000;
@@ -97,26 +106,34 @@ describe('setting up', () => {
     }
   });
 
-  it('gives the first turn to whoever holds the seven of diamonds', () => {
+  it('opens on the seven of hearts, which is what badam saat is named for', () => {
+    // Stated outright in exactly one place. Everything else in this file asks
+    // the ruleset which card opens, which keeps the tests honest about the
+    // rule changing -- but would let the rule change unnoticed if nothing
+    // pinned it.
+    expect(OPENING_CARD).toBe('H7');
+  });
+
+  it('gives the first turn to whoever holds the opening seven', () => {
     for (let seed = 1; seed <= 10; seed++) {
       const table = started(seed);
       const opener = table.state.turn!;
-      expect(handOf(table.state, opener)).toContain('D7');
+      expect(handOf(table.state, opener)).toContain(OPENER);
     }
   });
 });
 
 describe('the opening move', () => {
-  it('allows only the seven of diamonds first', () => {
+  it('allows only the opening seven first', () => {
     const table = started();
     const opener = table.state.turn!;
-    expect(legalCards(table.state, opener)).toEqual(['D7']);
+    expect(legalCards(table.state, opener)).toEqual([OPENER]);
   });
 
   it('refuses another seven before the game is open', () => {
     const table = started();
     const opener = table.state.turn!;
-    const otherSeven = handOf(table.state, opener).find((id) => id !== 'D7' && id.endsWith('7'));
+    const otherSeven = handOf(table.state, opener).find((id) => id !== OPENER && id.endsWith('7'));
     if (!otherSeven) return; // this deal did not give the opener a second seven
 
     const denied = table.submit(opener, {
@@ -125,14 +142,14 @@ describe('the opening move', () => {
       toZone: rowZoneId(table.state.cards[otherSeven]!.face!.suit!),
     });
     expect(denied.ok).toBe(false);
-    if (!denied.ok) expect(denied.reason).toMatch(/seven of diamonds/);
+    if (!denied.ok) expect(denied.reason).toMatch(/opening seven/);
   });
 
-  it('opens the diamond row and passes the turn on', () => {
+  it("opens the opening seven's row and passes the turn on", () => {
     const table = started();
     const opener = table.state.turn!;
-    expect(table.submit(opener, { type: 'move', cardIds: ['D7'], toZone: 'row:D' }).ok).toBe(true);
-    expect(rowOf(table.state, 'D')).toEqual(['D7']);
+    expect(table.submit(opener, { type: 'move', cardIds: [OPENER], toZone: OPENER_ROW }).ok).toBe(true);
+    expect(rowOf(table.state, OPENER_SUIT)).toEqual([OPENER]);
     expect(table.state.turn).not.toBe(opener);
   });
 });
@@ -144,15 +161,17 @@ describe('legality', () => {
   beforeEach(() => {
     table = started();
     opener = table.state.turn!;
-    table.submit(opener, { type: 'move', cardIds: ['D7'], toZone: 'row:D' });
+    table.submit(opener, { type: 'move', cardIds: [OPENER], toZone: OPENER_ROW });
   });
 
   it('accepts only the cards either side of a row', () => {
-    // With only D7 down, the diamond row accepts D6 and D8 and nothing else.
-    expect(isPlayable(table.state, table.state.cards['D6']!)).toBe(true);
-    expect(isPlayable(table.state, table.state.cards['D8']!)).toBe(true);
-    expect(isPlayable(table.state, table.state.cards['D5']!)).toBe(false);
-    expect(isPlayable(table.state, table.state.cards['D9']!)).toBe(false);
+    // With only the opening seven down, its row accepts the six and the eight
+    // of that suit and nothing else.
+    const of = (rank: string): string => `${OPENER_SUIT}${rank}`;
+    expect(isPlayable(table.state, table.state.cards[of('6')]!)).toBe(true);
+    expect(isPlayable(table.state, table.state.cards[of('8')]!)).toBe(true);
+    expect(isPlayable(table.state, table.state.cards[of('5')]!)).toBe(false);
+    expect(isPlayable(table.state, table.state.cards[of('9')]!)).toBe(false);
     // And a suit with nothing down still wants its seven first.
     expect(isPlayable(table.state, table.state.cards['S7']!)).toBe(true);
     expect(isPlayable(table.state, table.state.cards['S8']!)).toBe(false);
@@ -216,9 +235,9 @@ describe('legality', () => {
 
   it('has nothing to say about shuffling or dealing, because there is none', () => {
     const actor = table.state.turn!;
-    expect(table.submit(actor, { type: 'shuffle', zoneId: 'row:D' }).ok).toBe(false);
-    expect(table.submit(actor, { type: 'deal', fromZone: 'row:D', count: 1 }).ok).toBe(false);
-    expect(table.submit(actor, { type: 'gather', toZone: 'row:D' }).ok).toBe(false);
+    expect(table.submit(actor, { type: 'shuffle', zoneId: OPENER_ROW }).ok).toBe(false);
+    expect(table.submit(actor, { type: 'deal', fromZone: OPENER_ROW, count: 1 }).ok).toBe(false);
+    expect(table.submit(actor, { type: 'gather', toZone: OPENER_ROW }).ok).toBe(false);
   });
 });
 
@@ -343,10 +362,10 @@ describe('hidden information during a game', () => {
   it('makes every card on the layout public', () => {
     const table = started();
     const opener = table.state.turn!;
-    table.submit(opener, { type: 'move', cardIds: ['D7'], toZone: 'row:D' });
+    table.submit(opener, { type: 'move', cardIds: [OPENER], toZone: OPENER_ROW });
 
     for (const viewer of [...PLAYERS, null]) {
-      expect(projectFor(table.state, viewer).cards['D7']!.face).not.toBeNull();
+      expect(projectFor(table.state, viewer).cards[OPENER]!.face).not.toBeNull();
     }
   });
 
@@ -521,26 +540,26 @@ describe('the last play', () => {
     const opener = table.state.turn!;
     expect(table.state.lastPlay).toBeNull();
 
-    table.submit(opener, { type: 'move', cardIds: ['D7'], toZone: 'row:D' });
-    expect(table.state.lastPlay).toEqual({ cardIds: ['D7'], by: opener });
+    table.submit(opener, { type: 'move', cardIds: [OPENER], toZone: OPENER_ROW });
+    expect(table.state.lastPlay).toEqual({ cardIds: [OPENER], by: opener });
   });
 
   it('ignores a player tidying their own hand', () => {
     const table = started(18);
     const opener = table.state.turn!;
-    table.submit(opener, { type: 'move', cardIds: ['D7'], toZone: 'row:D' });
+    table.submit(opener, { type: 'move', cardIds: [OPENER], toZone: OPENER_ROW });
 
     const waiting = PLAYERS.find((p) => p !== opener)!;
     const hand = handOf(table.state, waiting);
     table.submit(waiting, { type: 'move', cardIds: [hand[2]!], toZone: `hand:${waiting}`, toIndex: 0 });
 
-    // Still the seven of diamonds: rearranging a hand is not a play.
-    expect(table.state.lastPlay).toEqual({ cardIds: ['D7'], by: opener });
+    // Still the opening seven: rearranging a hand is not a play.
+    expect(table.state.lastPlay).toEqual({ cardIds: [OPENER], by: opener });
   });
 
   it('is cleared by a fresh deal', () => {
     const table = started(19);
-    table.submit(table.state.turn!, { type: 'move', cardIds: ['D7'], toZone: 'row:D' });
+    table.submit(table.state.turn!, { type: 'move', cardIds: [OPENER], toZone: OPENER_ROW });
     expect(table.state.lastPlay).not.toBeNull();
 
     table.submit(PLAYERS[0]!, { type: 'startGame' });
@@ -552,16 +571,16 @@ describe('cards that are down stay down', () => {
   it('refuses to let a player take a card back off the layout', () => {
     const table = started(21);
     const opener = table.state.turn!;
-    table.submit(opener, { type: 'move', cardIds: ['D7'], toZone: 'row:D' });
+    table.submit(opener, { type: 'move', cardIds: [OPENER], toZone: OPENER_ROW });
 
     // A row belongs to nobody, which used to mean everybody could reach into it.
     const denied = table.submit(opener, {
       type: 'move',
-      cardIds: ['D7'],
+      cardIds: [OPENER],
       toZone: `hand:${opener}`,
     });
     expect(denied.ok).toBe(false);
-    expect(table.state.cards['D7']!.zone).toBe('row:D');
+    expect(table.state.cards[OPENER]!.zone).toBe(OPENER_ROW);
   });
 
   it('still lets a player rearrange cards already in their hand', () => {

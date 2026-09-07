@@ -7,10 +7,11 @@
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import {
+  DEFAULT_RULESET_ID,
   isClientMessage,
-  isRulesetId,
+  isOfferedRulesetId,
   PROTOCOL_VERSION,
-  RULESETS,
+  OFFERED_RULESETS,
   type ClientMessage,
 } from '@patte/core';
 import FastifyStatic from '@fastify/static';
@@ -89,7 +90,7 @@ function withinBudget(address: string): boolean {
 app.get('/health', async () => ({ ok: true, rooms: manager.size }));
 
 app.get('/api/rulesets', async () => ({
-  rulesets: RULESETS.map((ruleset) => ({
+  rulesets: OFFERED_RULESETS.map((ruleset) => ({
     id: ruleset.id,
     name: ruleset.name,
     blurb: ruleset.blurb,
@@ -99,8 +100,11 @@ app.get('/api/rulesets', async () => ({
 }));
 
 app.post<{ Body?: { rulesetId?: string; rounds?: number } }>('/api/rooms', async (request, reply) => {
-  const requested = request.body?.rulesetId;
-  if (requested !== undefined && !isRulesetId(requested)) {
+  // Defaulted rather than left undefined: an unnamed game used to mean free
+  // play, which is not currently on offer, so a bare request would have opened
+  // the one table nobody is meant to be able to ask for.
+  const requested = request.body?.rulesetId ?? DEFAULT_RULESET_ID;
+  if (!isOfferedRulesetId(requested)) {
     return reply.code(400).send({ error: `unknown game: ${requested}` });
   }
 
@@ -209,7 +213,11 @@ wss.on('connection', (socket: WebSocket) => {
       // typo, or a table that had been reaped, or a server that had restarted
       // all looked identical: your game, silently replaced by a sandbox.
       const found = manager.get(message.roomId);
-      if (!found) return fail('That table has closed. Ask for a new code, or start your own.');
+      if (!found) {
+        return fail(
+          'That table is no longer in memory — tables last only as long as the server keeps running. Start a new one, or join another with its code.',
+        );
+      }
       room = found;
       playerId = message.playerId?.slice(0, 64) || crypto.randomUUID();
       const name = (message.name || 'Player').slice(0, 24);

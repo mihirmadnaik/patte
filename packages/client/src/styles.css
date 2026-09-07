@@ -27,7 +27,16 @@
    * thing that wants adjusting by eye, on a real screen.
    */
   --turn-ring: 2px;
-  --last-play: #ff8a3d;
+  /*
+   * The three faces of the last-played mark: the ring, the glow around it,
+   * and the brighter flash it lands with. Spelled out rather than mixed from
+   * the base colour, because `color-mix` is not old enough to risk here -- an
+   * unsupported value would invalidate the whole shadow and take the ring
+   * with it.
+   */
+  --last-play: #00f0cd;
+  --last-play-glow: rgba(0, 240, 205, 0.55);
+  --last-play-flash: rgba(0, 240, 205, 0.8);
   --last-play-ring: 3px;
   --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
 
@@ -842,20 +851,21 @@ html, body, #root {
 /*
  * The card that was just played.
  *
- * Orange rather than the pale blue it was: on a green table the blue read as
- * one more cool colour among the card backs and the felt, and this is the one
- * mark on the table you go looking for.
+ * A turquoise nothing else on the table uses. The felt is green and the cards
+ * are white, red and black, so a warm ring competes with the suits and a dark
+ * one disappears into the felt -- this is the one mark you go looking for, and
+ * it should belong to nothing else.
  */
 .card.is-last-play {
-  box-shadow: 0 0 0 var(--last-play-ring) var(--last-play), 0 0 20px rgba(255, 138, 61, 0.55),
+  box-shadow: 0 0 0 var(--last-play-ring) var(--last-play), 0 0 20px var(--last-play-glow),
     var(--shadow);
   animation: just-played 620ms var(--ease);
 }
 
 @keyframes just-played {
-  0% { box-shadow: 0 0 0 6px rgba(255, 138, 61, 0.85), 0 0 32px rgba(255, 138, 61, 0.75); }
+  0% { box-shadow: 0 0 0 6px var(--last-play-flash), 0 0 32px var(--last-play-flash); }
   100% {
-    box-shadow: 0 0 0 var(--last-play-ring) var(--last-play), 0 0 20px rgba(255, 138, 61, 0.55),
+    box-shadow: 0 0 0 var(--last-play-ring) var(--last-play), 0 0 20px var(--last-play-glow),
       var(--shadow);
   }
 }

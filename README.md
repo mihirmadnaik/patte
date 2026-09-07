@@ -354,9 +354,10 @@ it only ever shows when passing is the only move left.
 The gold ring and the orange one both carry meaning now rather than decorating,
 so both are heavier than they were, and both are single values in `:root` —
 `--turn-ring` and `--last-play-ring` — because that is the sort of thing you
-adjust by eye on a real screen. The last card played is orange rather than the
-pale blue it was: on a green table the blue read as one more cool colour among
-the felt and the card backs, and it is the one mark you go looking for.
+adjust by eye on a real screen. The last card played wears a turquoise nothing
+else on the table uses: the felt is green and the cards are white, red and
+black, so a warm ring competes with the suits and a dark one disappears into
+the felt.
 
 Whose turn it is, and the one button that is yours to press, sit in a pill
 centred just beneath your own cards, where you are already looking. The table

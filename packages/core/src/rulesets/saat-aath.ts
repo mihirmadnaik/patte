@@ -20,7 +20,7 @@
  */
 
 import { buildDeck, shuffled, type Rng } from '../deck.js';
-import type { EventBody, GameEvent, Intent } from '../intents.js';
+import { TABLE_INTENTS, type EventBody, type GameEvent, type Intent } from '../intents.js';
 import type {
   Card,
   CardId,
@@ -295,10 +295,19 @@ export const saatAath: Ruleset = {
     return trickAwaitingCollection(state);
   },
 
-  setup({ players, rng, match }: SetupContext): SetupSpec {
-    // The deal alternates, so the harder eight-trick quota changes hands each
-    // round rather than punishing whoever sat down second.
-    const dealer = players[match.played.length % players.length] ?? players[0]!;
+  setup({ players, rng, match, previous }: SetupContext): SetupSpec {
+    // The deal alternates every time cards go out, so the harder eight-trick
+    // quota changes hands each game rather than punishing whoever sat down
+    // second.
+    //
+    // Taken from the previous *deal* rather than from the number of scored
+    // rounds. Those differ whenever a round ends without a score -- a redeal,
+    // an abandoned hand -- and reading the round count handed the trump call
+    // back to the player who had just made it.
+    const last = typeof previous['dealer'] === 'string' ? previous['dealer'] : null;
+    const dealer =
+      (last ? players.find((id) => id !== last) : players[match.played.length % players.length]) ??
+      players[0]!;
     const caller = players.find((id) => id !== dealer) ?? players[0]!;
     const order = [caller, dealer]; // the caller is dealt to first, and leads
 
@@ -357,14 +366,7 @@ export const saatAath: Ruleset = {
 
   validate(state: GameState, intent: Intent, actor: PlayerId): Verdict {
     if (state.phase !== 'playing') {
-      const betweenRounds: Intent['type'][] = [
-        'startGame',
-        'setMatchRounds',
-        'endMatch',
-        'declare',
-        'rename',
-      ];
-      return betweenRounds.includes(intent.type)
+      return TABLE_INTENTS.includes(intent.type)
         ? ALLOW
         : { ok: false, reason: 'the game is not in play' };
     }
@@ -375,8 +377,7 @@ export const saatAath: Ruleset = {
         if (!SUITS.includes(intent.option as Suit)) return { ok: false, reason: 'pick a suit' };
         return ALLOW;
       }
-      const allowed: Intent['type'][] = ['startGame', 'setMatchRounds', 'endMatch', 'declare', 'rename', 'peek'];
-      return allowed.includes(intent.type)
+      return TABLE_INTENTS.includes(intent.type) || intent.type === 'peek'
         ? ALLOW
         : { ok: false, reason: 'waiting for trump to be called' };
     }

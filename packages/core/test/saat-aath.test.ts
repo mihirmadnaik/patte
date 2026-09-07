@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { dealAgain } from './helpers.js';
 import {
   CALLER_QUOTA,
   DEALER_QUOTA,
@@ -13,6 +14,7 @@ import {
   ledSuit,
   makeRng,
   pileZoneId,
+  quotaFor,
   projectFor,
   saatAath,
   stackZoneId,
@@ -645,5 +647,50 @@ describe('where a card may go', () => {
     const result = t.submit(actor, { type: 'move', cardIds: [cardId], toZone: destination! });
     expect(result.ok, result.ok ? '' : result.reason).toBe(true);
     expect(t.state.zones[TRICK_ZONE]?.cards).toContain(cardId);
+  });
+});
+
+describe('who calls trump', () => {
+  it('changes hands on every deal, not only on scored rounds', () => {
+    const t = dealt();
+    const first = callerOf(t.state)!;
+    expect(first).toBeTruthy();
+
+    // A redeal abandons the round rather than scoring it, so `match.played`
+    // does not move. The call still has to alternate: this is the bug that
+    // handed the same player the trump call twice running.
+    dealAgain(t);
+    expect(t.state.match.played).toHaveLength(0);
+    expect(callerOf(t.state)).not.toBe(first);
+
+    dealAgain(t);
+    expect(callerOf(t.state)).toBe(first);
+  });
+
+  it('keeps alternating across a whole match', () => {
+    const t = playing();
+    const callers = [callerOf(t.state)!];
+
+    for (let round = 0; round < 4; round++) {
+      playOut(t);
+      dealAgain(t);
+      callers.push(callerOf(t.state)!);
+    }
+
+    for (let i = 1; i < callers.length; i++) {
+      expect(callers[i], `two deals running went to ${callers[i]}`).not.toBe(callers[i - 1]);
+    }
+  });
+
+  it('gives the dealer the easier quota, whoever the dealer is', () => {
+    const t = dealt();
+    for (let deal = 0; deal < 4; deal++) {
+      const dealer = dealerOf(t.state)!;
+      const caller = callerOf(t.state)!;
+      expect(quotaFor(t.state, dealer)).toBe(DEALER_QUOTA);
+      expect(quotaFor(t.state, caller)).toBe(CALLER_QUOTA);
+      expect(caller).not.toBe(dealer);
+      dealAgain(t);
+    }
   });
 });

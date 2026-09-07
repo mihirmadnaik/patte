@@ -34,6 +34,25 @@ export function Toolbar({
   // fold into a menu instead of wrapping the toolbar onto three rows.
   const compact = useCompact();
 
+  /*
+   * Publish how tall this is, so an overlay can start underneath it.
+   *
+   * The toolbar wraps onto a second row on a narrow screen, so its height is
+   * not a constant anyone can hardcode -- and an overlay that guessed low
+   * would cover the room code and the way out. Measured after paint and on
+   * resize, which is enough: nothing else changes its height.
+   */
+  const bar = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const publish = (): void => {
+      const height = bar.current?.offsetHeight;
+      if (height) document.documentElement.style.setProperty('--toolbar-h', `${height}px`);
+    };
+    publish();
+    window.addEventListener('resize', publish);
+    return () => window.removeEventListener('resize', publish);
+  });
+
   const copyLink = async (): Promise<void> => {
     const copied = await copyText(window.location.href);
     toast(
@@ -44,7 +63,7 @@ export function Toolbar({
   };
 
   return (
-    <header className="toolbar">
+    <header className="toolbar" ref={bar}>
       <div className="toolbar__group">
         <button className="code" onClick={() => void copyLink()} title="Copy the link to this table">
           <em>code</em>
@@ -128,8 +147,12 @@ export function Toolbar({
         )}
 
         {!sandbox && state.phase === 'playing' && isOwner && (
-          <button onClick={() => net.submit({ type: 'startGame' })} title="Abandon this round and deal again">
-            Redeal
+          <button
+            disabled={state.redeal !== null}
+            onClick={() => net.submit({ type: 'proposeRedeal' })}
+            title="Ask the table to abandon this hand and deal again"
+          >
+            {state.redeal ? 'Asking…' : 'Redeal'}
           </button>
         )}
 

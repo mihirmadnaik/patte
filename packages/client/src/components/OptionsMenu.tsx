@@ -97,13 +97,25 @@ export function OptionsMenu({
 
               <button
                 className="menu__action"
+                disabled={state.redeal !== null}
                 onClick={() => {
-                  net.submit({ type: 'startGame', reset: true });
+                  // Mid-hand this is a redeal with the scores thrown in, so it
+                  // goes through the same door: the table has to agree. Between
+                  // rounds there is no hand to abandon and nothing to agree to.
+                  net.submit(
+                    state.phase === 'playing'
+                      ? { type: 'proposeRedeal', reset: true }
+                      : { type: 'startGame', reset: true },
+                  );
                   setOpen(false);
                 }}
               >
                 Start a new match
-                <em>Clears the scores and redeals</em>
+                <em>
+                  {state.phase === 'playing'
+                    ? 'Clears the scores and redeals — everyone has to agree'
+                    : 'Clears the scores and redeals'}
+                </em>
               </button>
             </>
           ) : (

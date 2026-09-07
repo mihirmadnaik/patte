@@ -45,6 +45,15 @@ export type Intent =
    * round is added to the match already in progress.
    */
   | ({ type: 'startGame'; reset?: boolean })
+  /**
+   * Ask the table to abandon this hand and deal again.
+   *
+   * Separate from `startGame` because it needs an answer: the asker has seen
+   * their cards, so an unchecked redeal is a way to shop for a better hand.
+   */
+  | ({ type: 'proposeRedeal'; reset?: boolean })
+  /** Answer a redeal somebody has asked for. The asker may answer to cancel. */
+  | ({ type: 'answerRedeal'; agree: boolean })
   /** Change how many rounds the match runs to. */
   | ({ type: 'setMatchRounds'; rounds: number })
   /** Stop here. A round in progress is abandoned rather than scored. */
@@ -78,6 +87,25 @@ export interface CardFlip {
   faceUp: boolean;
 }
 
+/**
+ * Intents about the *table* rather than about the game being played on it.
+ *
+ * A ruleset decides what is a legal move; it does not decide whether people
+ * may agree to deal again, rename themselves, or stop. Kept here so that the
+ * next ruleset cannot forget one of them and quietly make a table
+ * unadministrable in the middle of a hand -- which is exactly what happened
+ * when the redeal request was added and the trump call refused it.
+ */
+export const TABLE_INTENTS: readonly Intent['type'][] = [
+  'startGame',
+  'proposeRedeal',
+  'answerRedeal',
+  'setMatchRounds',
+  'endMatch',
+  'declare',
+  'rename',
+];
+
 export type EventBody =
   | { type: 'tableCreated'; zones: Zone[]; cards: Card[]; options: TableOptions; rulesetId: string }
   /**
@@ -94,6 +122,10 @@ export type EventBody =
       firstTurn: PlayerId | null;
     }
   | { type: 'gameEnded'; rankings: PlayerId[]; scores: Record<PlayerId, number> }
+  | { type: 'redealProposed'; by: PlayerId; waitingOn: PlayerId[]; reset: boolean }
+  | { type: 'redealAnswered'; playerId: PlayerId; agree: boolean }
+  /** The request is over: refused, cancelled, or carried out. */
+  | { type: 'redealWithdrawn' }
   | { type: 'matchRoundsSet'; rounds: number }
   | { type: 'matchReset' }
   | { type: 'matchEnded' }

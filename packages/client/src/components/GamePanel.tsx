@@ -57,6 +57,13 @@ export function GamePanel({
   const ruleset = getRuleset(state.rulesetId);
   const [rounds, setRounds] = useState(state.match.rounds);
 
+  // A redeal somebody has asked for outranks everything else on screen: the
+  // hand is on hold until it is answered, and the person being waited on is
+  // the only one who can move things along.
+  if (state.redeal) {
+    return <RedealRequest state={state} you={you} net={net} />;
+  }
+
   // A game can pause mid-deal for a decision. 7-8 does: the non-dealer names
   // trump before anything is turned face up.
   if (state.phase === 'playing' && ruleset.id === 'saat-aath' && stageOf(state) === 'calling') {
@@ -175,6 +182,73 @@ export function GamePanel({
   }
 
   return null;
+}
+
+/**
+ * A redeal, put to the table.
+ *
+ * Everyone sees the same panel; what differs is whether it has buttons. The
+ * asker gets a way to withdraw and the names of whoever has not answered, so
+ * the wait is never mysterious -- and anyone who has already agreed sees that
+ * they have, rather than a question they cannot answer twice.
+ */
+function RedealRequest({
+  state,
+  you,
+  net,
+}: {
+  state: GameState;
+  you: PlayerId;
+  net: Connection;
+}): React.JSX.Element | null {
+  const proposal = state.redeal;
+  if (!proposal) return null;
+
+  const name = (id: PlayerId): string => state.players[id]?.name ?? 'Player';
+  const mine = proposal.by === you;
+  const yours = proposal.waitingOn.includes(you);
+  const waiting = proposal.waitingOn.map(name).join(', ');
+
+  const answer = (agree: boolean) => () => {
+    net.submit({ type: 'answerRedeal', agree });
+    sounds.slide();
+  };
+
+  return (
+    <div className="panel">
+      <div className="panel__card">
+        <h2>{mine ? 'Waiting on the table' : `${name(proposal.by)} wants to redeal`}</h2>
+        <p>
+          {mine
+            ? 'Everyone has to agree before the cards go back in.'
+            : proposal.reset
+              ? 'This hand would be abandoned and the match started over from nothing.'
+              : 'This hand would be abandoned and dealt again. Nothing is scored.'}
+        </p>
+
+        {proposal.waitingOn.length > 0 && (
+          <p className="panel__note">
+            {yours && !mine ? 'It is your call.' : `Still waiting on ${waiting}.`}
+          </p>
+        )}
+
+        <div className="panel__actions">
+          {yours && !mine ? (
+            <>
+              <button className="primary" onClick={answer(true)}>
+                Agree — deal again
+              </button>
+              <button onClick={answer(false)}>Keep playing</button>
+            </>
+          ) : mine ? (
+            <button onClick={answer(false)}>Never mind</button>
+          ) : (
+            <p className="panel__note">You have answered. Waiting on {waiting}.</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 /**

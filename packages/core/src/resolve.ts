@@ -227,9 +227,26 @@ function checkStructural(
         return deny(`${deps.ruleset.name} takes at most ${deps.ruleset.maxPlayers} players`);
       }
       // Anyone may deal a waiting or finished table. Interrupting a game in
-      // progress is the table owner's call.
-      if (state.phase === 'playing' && !isOwner(state, actor)) {
-        return deny('only the table owner may restart a game in progress');
+      // progress is nobody's call alone -- see `proposeRedeal`.
+      if (state.phase === 'playing') {
+        return deny('ask the table for a redeal instead');
+      }
+      return { ok: true, events: [] };
+    }
+
+    case 'proposeRedeal': {
+      if (state.phase !== 'playing') return deny('there is no hand to redeal');
+      if (!isOwner(state, actor)) return deny('only the table owner may ask for a redeal');
+      if (state.redeal) return deny('the table is already deciding on a redeal');
+      return { ok: true, events: [] };
+    }
+
+    case 'answerRedeal': {
+      const proposal = state.redeal;
+      if (!proposal) return deny('nobody has asked for a redeal');
+      // The asker may withdraw; everybody else may answer once.
+      if (actor !== proposal.by && !proposal.waitingOn.includes(actor)) {
+        return deny('you have already answered');
       }
       return { ok: true, events: [] };
     }
@@ -365,33 +382,36 @@ function build(
       return { ok: true, events };
     }
 
-    case 'startGame': {
-      const players = [...state.seatOrder];
-      const setup = deps.ruleset.setup({ players, rng: deps.rng, match: state.match });
-      const events: EventBody[] = [];
+    case 'startGame':
+      return { ok: true, events: dealEvents(state, deps, intent.reset === true) };
 
-      if (intent.reset) events.push({ type: 'matchReset' });
-      // Starting a round the match has no room for extends it by one, so
-      // "play another" always works without needing a separate step.
-      const played = intent.reset ? 0 : state.match.played.length;
-      if (played >= state.match.rounds) {
-        events.push({ type: 'matchRoundsSet', rounds: played + 1 });
-      }
-
-      events.push({
-        type: 'gameStarted',
-        zones: setup.zones,
-        cards: setup.cards,
-        options: { ...state.options, ...setup.options },
-        inPlay: players,
-        firstTurn: setup.firstTurn ?? null,
+    case 'proposeRedeal': {
+      const others = state.inPlay.filter((id) => id !== actor && state.players[id] !== undefined);
+      // Nobody to ask is not the same as nobody agreeing. A solo table, or one
+      // where everyone else has left, simply deals.
+      if (others.length === 0) return { ok: true, events: dealEvents(state, deps, intent.reset === true) };
+      return resolved({
+        type: 'redealProposed',
+        by: actor,
+        waitingOn: others,
+        reset: intent.reset === true,
       });
-      // Opening scratchpad values land after the deal, since `gameStarted`
-      // wipes it.
-      for (const [key, value] of Object.entries(setup.gameData ?? {})) {
-        events.push({ type: 'gameDataSet', key, value });
-      }
-      return { ok: true, events };
+    }
+
+    case 'answerRedeal': {
+      const proposal = state.redeal;
+      if (!proposal) return resolved({ type: 'redealWithdrawn' });
+
+      // The asker answering their own question is them thinking better of it.
+      if (actor === proposal.by) return resolved({ type: 'redealWithdrawn' });
+
+      const answer: EventBody = { type: 'redealAnswered', playerId: actor, agree: intent.agree };
+      if (!intent.agree) return { ok: true, events: [answer, { type: 'redealWithdrawn' }] };
+
+      // Unanimous only when this was the last answer outstanding.
+      const remaining = proposal.waitingOn.filter((id) => id !== actor);
+      if (remaining.length > 0) return { ok: true, events: [answer] };
+      return { ok: true, events: [answer, ...dealEvents(state, deps, proposal.reset)] };
     }
 
     case 'setMatchRounds':
@@ -480,4 +500,45 @@ class Planner {
 
     return pos ? { cardId, toZone, toIndex: index, pos } : { cardId, toZone, toIndex: index };
   }
+}
+
+/**
+ * The events that put a fresh deal on the table.
+ *
+ * Shared by every path that can deal -- the first game, the next round, and a
+ * redeal the table has agreed to -- because a deal that arrived by consent has
+ * to be indistinguishable from any other. Two copies of this would be two
+ * chances for them to drift.
+ */
+function dealEvents(state: GameState, deps: ResolveDeps, reset: boolean): EventBody[] {
+  const players = [...state.seatOrder];
+  const setup = deps.ruleset.setup({
+    players,
+    rng: deps.rng,
+    match: state.match,
+    previous: state.gameData,
+  });
+  const events: EventBody[] = [];
+
+  if (reset) events.push({ type: 'matchReset' });
+  // Starting a round the match has no room for extends it by one, so "play
+  // another" always works without needing a separate step.
+  const played = reset ? 0 : state.match.played.length;
+  if (played >= state.match.rounds) {
+    events.push({ type: 'matchRoundsSet', rounds: played + 1 });
+  }
+
+  events.push({
+    type: 'gameStarted',
+    zones: setup.zones,
+    cards: setup.cards,
+    options: { ...state.options, ...setup.options },
+    inPlay: players,
+    firstTurn: setup.firstTurn ?? null,
+  });
+  // Opening scratchpad values land after the deal, since `gameStarted` wipes it.
+  for (const [key, value] of Object.entries(setup.gameData ?? {})) {
+    events.push({ type: 'gameDataSet', key, value });
+  }
+  return events;
 }

@@ -41,6 +41,7 @@ export function emptyState(roomId: string): GameState {
     rankings: [],
     match: { rounds: 1, played: [] },
     lastPlay: null,
+    redeal: null,
     gameData: {},
   };
 }
@@ -79,6 +80,9 @@ function apply(state: GameState, event: GameEvent): void {
       // A fresh deal starts with a blank scratchpad; last round's trump suit
       // has no business surviving into this one.
       state.gameData = {};
+      // Whatever anyone was being asked about, the cards have gone out again
+      // and the question no longer refers to anything.
+      state.redeal = null;
       return;
     }
 
@@ -98,6 +102,29 @@ function apply(state: GameState, event: GameEvent): void {
     case 'chosen': {
       // The choice itself changes nothing; the ruleset decides what follows
       // and writes any consequence to `gameData`.
+      return;
+    }
+
+    case 'redealProposed': {
+      state.redeal = {
+        by: event.by,
+        waitingOn: [...event.waitingOn],
+        reset: event.reset,
+      };
+      return;
+    }
+
+    case 'redealAnswered': {
+      if (!state.redeal) return;
+      // Answered either way, they are no longer being waited on. A refusal is
+      // followed by a withdrawal; agreement leaves the request one answer
+      // shorter.
+      state.redeal.waitingOn = state.redeal.waitingOn.filter((id) => id !== event.playerId);
+      return;
+    }
+
+    case 'redealWithdrawn': {
+      state.redeal = null;
       return;
     }
 
@@ -162,6 +189,11 @@ function apply(state: GameState, event: GameEvent): void {
       // The player's cards stay on the table; only the seat is vacated. A
       // player who drops mid-hand can rejoin and find their hand intact.
       releaseHeldBy(state, event.playerId);
+      // A question put to a table that has since changed is not a question
+      // anybody can answer -- least of all if the person who left was the one
+      // being waited on. Dropped rather than silently passed, so the asker
+      // asks again and nobody is redealt without having agreed to it.
+      state.redeal = null;
       delete state.players[event.playerId];
       state.seatOrder = state.seatOrder.filter((id) => id !== event.playerId);
       // Someone who leaves mid-game stops taking turns, or the table waits

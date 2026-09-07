@@ -49,6 +49,15 @@ export interface SetupContext {
    * deal alternates, and the dealer's quota is the easier one.
    */
   match: MatchState;
+  /**
+   * The `gameData` of the deal this one replaces, empty for the first.
+   *
+   * A role that alternates has to hand over from the *last deal*, not from the
+   * count of finished rounds. Only a round that is scored joins `match.played`,
+   * so a round that is abandoned and dealt again leaves that count untouched --
+   * and 7-8 handed the trump call straight back to the player who just had it.
+   */
+  previous: Readonly<Record<string, string | number | boolean>>;
 }
 
 export interface Score {

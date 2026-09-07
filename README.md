@@ -126,6 +126,16 @@ playable, and the client lights up exactly the cards the engine would accept —
 asked of the ruleset, not reimplemented in the UI, so the highlight and the
 verdict can never disagree.
 
+**Dealing again needs agreement.** The Redeal button asks rather than acts:
+everyone still in the game has to say yes, and one refusal ends it. Whoever
+asks has already seen their cards, so an unchecked redeal is a way to keep
+dealing until the hand suits you — which is a thing a physical table prevents
+by everyone watching, and a thing this one has to prevent explicitly. The same
+applies to *Start a new match* while a hand is in progress. A `startGame` that
+would interrupt a hand is refused outright; every path that deals goes through
+one shared builder, so a deal that arrived by consent is indistinguishable
+from any other.
+
 **सात-आठ** (Saat-Aath, 7-8) — two players, thirty cards, fifteen tricks. Each stack shows the
 back of its buried card peeking out from under the face-up one, so you can see
 at a glance which stacks still hold something and which are down to their last
@@ -265,6 +275,23 @@ placement, never restated alongside it.** Three separate faults came from the
 two drifting apart — Sevens rows that never shrank, rows that rode up over the
 opponents, and rows that ran into the hand. `rowsTop` and `handTop` are now
 shared by both.
+
+## A note on stacking
+
+Two rules, both learned by getting them wrong:
+
+**The toolbar sits above the table.** It used to be at `z-index: 10`, which put
+it *under* every card — cards layer up to 9500 and `.surface` opens no stacking
+context of its own, so they compete with the toolbar directly. The Match menu
+hangs off the toolbar, so it inherited the problem and opened behind the felt:
+present, and entirely invisible.
+
+**An overlay covers the table, not the room.** Panels start below the toolbar
+rather than at the top of the window, so the code, the menu and the way out
+stay reachable while a question is on screen. The toolbar publishes its own
+height as `--toolbar-h`, because it wraps onto a second row on a narrow screen
+and any hardcoded guess would cover the room code — measured, it comes out at
+48px on a phone and 170px in a very narrow window.
 
 ## A note on the status readout
 

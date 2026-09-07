@@ -23,7 +23,7 @@
  */
 
 import { buildDeck, shuffled, type Rng } from '../deck.js';
-import type { EventBody, GameEvent, Intent } from '../intents.js';
+import { TABLE_INTENTS, type EventBody, type GameEvent, type Intent } from '../intents.js';
 import {
   RANK_ORDER,
   cardPoints,
@@ -247,14 +247,7 @@ export const sevens: Ruleset = {
   validate(state: GameState, intent: Intent, actor: PlayerId): Verdict {
     // Starting the next deal is the only thing to do once someone has won.
     if (state.phase !== 'playing') {
-      const betweenRounds: Intent['type'][] = [
-        'startGame',
-        'setMatchRounds',
-        'endMatch',
-        'declare',
-        'rename',
-      ];
-      return betweenRounds.includes(intent.type)
+      return TABLE_INTENTS.includes(intent.type)
         ? ALLOW
         : { ok: false, reason: 'the game is not in play' };
     }
@@ -313,6 +306,8 @@ export const sevens: Ruleset = {
       // Nothing else belongs in a game of Sevens. The deck is fully dealt, so
       // there is nothing to shuffle, draw or turn over.
       case 'startGame':
+      case 'proposeRedeal':
+      case 'answerRedeal':
       case 'setMatchRounds':
       case 'endMatch':
       case 'declare':

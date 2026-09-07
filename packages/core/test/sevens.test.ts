@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { dealAgain } from './helpers.js';
 import {
   Table,
   cardPoints,
@@ -562,7 +563,7 @@ describe('the last play', () => {
     table.submit(table.state.turn!, { type: 'move', cardIds: [OPENER], toZone: OPENER_ROW });
     expect(table.state.lastPlay).not.toBeNull();
 
-    table.submit(PLAYERS[0]!, { type: 'startGame' });
+    dealAgain(table);
     expect(table.state.lastPlay).toBeNull();
   });
 });

@@ -57,7 +57,20 @@ html, body, #root {
   padding: 10px 16px;
   background: linear-gradient(#241a10, #1a120b);
   border-bottom: 2px solid #0c0805;
-  z-index: 10;
+  /*
+   * Above the table, and above the panels.
+   *
+   * It used to sit at 10, which put it under every card on the felt -- cards
+   * layer up to 9500 and `.surface` opens no stacking context of its own, so
+   * they compete with the toolbar directly. The Match menu hangs off this
+   * element, so it inherited the problem and opened *behind* the table: the
+   * menu was there, and none of it was visible.
+   *
+   * Being above the overlays as well is deliberate. A question on screen must
+   * not take the room's controls away with it.
+   */
+  position: relative;
+  z-index: 9950;
 }
 
 .toolbar__group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -492,15 +505,29 @@ html, body, #root {
 
 
 /* Lobby and end-of-game overlay. */
+/*
+ * An overlay covers the table, not the room.
+ *
+ * It starts below the toolbar rather than at the top of the window, so the
+ * code, the Match menu and the way out stay both visible and clickable while
+ * a question is on screen. `--toolbar-h` is measured and published by the
+ * toolbar itself, since its height depends on how much wraps onto a second
+ * row; the fallback is the one-row height.
+ */
 .panel {
   position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
+  inset: var(--toolbar-h, 56px) 0 0 0;
+  display: flex;
+  padding: 16px;
+  overflow-y: auto;
   background: rgba(6, 12, 9, 0.72);
   z-index: 9800;
   backdrop-filter: blur(3px);
 }
+
+/* Centred by auto margins: a centred flex item taller than its box would
+   overflow past the top, out of reach of the scroller. */
+.panel > .panel__card { margin: auto; }
 
 .panel__card {
   width: min(380px, 90vw);
@@ -511,6 +538,31 @@ html, body, #root {
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
   text-align: center;
 }
+
+/* A question the table is being asked, rather than a result being announced. */
+.panel__note {
+  margin: 0 0 14px;
+  font-size: 12px;
+  opacity: 0.6;
+  line-height: 1.5;
+}
+
+.panel__actions { display: flex; flex-direction: column; gap: 8px; }
+
+.panel__actions button {
+  font: inherit;
+  font-size: 14px;
+  padding: 11px;
+  border-radius: 10px;
+  border: 1px solid #34473d;
+  background: #16241d;
+  color: #e8efe9;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.panel__actions button:hover { background: #1c2e25; }
+.panel__actions .panel__note { margin: 0; text-align: center; }
 
 .panel__card h2 { margin: 0 0 6px; font-size: 24px; }
 .panel__card p { margin: 0 0 18px; font-size: 13px; opacity: 0.65; line-height: 1.5; }

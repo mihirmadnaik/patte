@@ -133,6 +133,22 @@ export const DEFAULT_OPTIONS: TableOptions = {
   undoWindowMs: 10_000,
 };
 
+/**
+ * A redeal waiting on the rest of the table.
+ *
+ * Dealing again mid-hand is not a neutral act: whoever asks for it has seen
+ * their cards, and a table owner who can redeal at will can simply keep
+ * dealing until the hand suits them. So it becomes a request. Everyone still
+ * in the game has to agree, and one refusal ends it.
+ */
+export interface RedealProposal {
+  by: PlayerId;
+  /** Everyone whose answer is still wanted. */
+  waitingOn: PlayerId[];
+  /** Whether the deal that follows also clears the running scores. */
+  reset: boolean;
+}
+
 export interface GameState {
   roomId: string;
   /** Sequence number of the last applied event. */
@@ -166,6 +182,8 @@ export interface GameState {
    * seat but no cards, and the turn must skip them until the next deal.
    */
   inPlay: PlayerId[];
+  /** A redeal somebody has asked for and the table has not settled yet. */
+  redeal: RedealProposal | null;
   /** Finishing order once the game is over. First out is first here. */
   rankings: PlayerId[];
 

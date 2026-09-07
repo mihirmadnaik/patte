@@ -83,3 +83,27 @@ export function fuzz(table: Table, steps: number, seed: number): void {
     table.submit(actor, randomIntent(table.state, actor, rng));
   }
 }
+
+/**
+ * Deal again, the way a table actually does it.
+ *
+ * Mid-hand this is a request the rest of the table has to agree to, so a test
+ * that wants a fresh deal has to go through the same door a player does.
+ */
+export function dealAgain(table: Table, reset = false): void {
+  const owner = table.state.seatOrder[0]!;
+
+  if (table.state.phase !== 'playing') {
+    const started = table.submit(owner, { type: 'startGame', ...(reset ? { reset } : {}) });
+    if (!started.ok) throw new Error(started.reason);
+    return;
+  }
+
+  const proposed = table.submit(owner, { type: 'proposeRedeal', ...(reset ? { reset } : {}) });
+  if (!proposed.ok) throw new Error(proposed.reason);
+
+  for (const playerId of [...(table.state.redeal?.waitingOn ?? [])]) {
+    const answered = table.submit(playerId, { type: 'answerRedeal', agree: true });
+    if (!answered.ok) throw new Error(answered.reason);
+  }
+}

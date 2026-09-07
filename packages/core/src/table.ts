@@ -69,7 +69,7 @@ export class Table {
     ];
 
     if (this.ruleset.autoStart) {
-      const setup = this.ruleset.setup({ players: [], rng: this.rng, match: this.state.match });
+      const setup = this.ruleset.setup({ players: [], rng: this.rng, match: this.state.match, previous: {} });
       bodies.push({
         type: 'gameStarted',
         zones: setup.zones,

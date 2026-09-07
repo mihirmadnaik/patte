@@ -10,6 +10,7 @@ import {
   TRICK_WIDTH,
   handTop,
   rowsTop,
+  rowHandGap,
   trickBandMargin,
   metricsFor,
   fanPlacement,
@@ -91,8 +92,10 @@ describe('desktop layout is unchanged', () => {
    * the desktop rows down by about fifteen pixels and let the last row reach
    * the hand instead of stopping short of it.
    */
-  // The one number in this group that has legitimately moved: with the
-  // opponents' hands no longer drawn, the rows start a card's height higher.
+  // The one entry in this group that moves on purpose. It has now done so
+  // twice: once when the opponents' hands stopped being drawn and the rows
+  // could start higher, and again when the rows were given smaller cards and
+  // a gap above the hand, which spreads them further apart.
   it('bands the Sevens rows', () => {
     expect([0, 1, 2, 3].map((i) => round(rowBand(M, i, 4, DESKTOP.height - 68)))).toMatchSnapshot();
   });
@@ -127,7 +130,7 @@ describe('sizing the table to the screen', () => {
   const IPHONE_SURFACE = IPHONE.height - 48;
 
   it('leaves a roomy screen at full size', () => {
-    for (const family of ['stacks', 'rows', 'free'] as const) {
+    for (const family of ['stacks', 'free'] as const) {
       const m = metricsFor(1280, 745, family);
       expect(m.cardW, family).toBe(DESKTOP_CARD_W);
       expect(m.cardH, family).toBe(106);
@@ -136,6 +139,16 @@ describe('sizing the table to the screen', () => {
       expect(m.nameBand, family).toBe(44);
       expect(m.compact, family).toBe(false);
     }
+  });
+
+  it('gives a rows layout smaller cards than fit, on purpose', () => {
+    // Sevens is read as four rows rather than as individual cards, so it
+    // spends the difference on the space between them. Nothing about the
+    // screen has changed here -- this is a choice about the layout.
+    const rows = metricsFor(1280, 745, 'rows');
+    const stacks = metricsFor(1280, 745, 'stacks');
+    expect(rows.cardW).toBe(Math.round(stacks.cardW * 0.8));
+    expect(rows.compact).toBe(false);
   });
 
   it('shrinks the card until a 7-8 stack row fits a phone', () => {
@@ -311,6 +324,27 @@ describe('nothing collides, at any size', () => {
         expect(centres[3]! + m.cardH / 2, `last row runs into the hand on a ${label}`).toBeLessThanOrEqual(
           handTop(m, usable) + 0.001,
         );
+
+        // And it stops short of it rather than meeting it. Laid out to end
+        // exactly where the hand begins, the last row reads as part of what
+        // you are holding.
+        const gap = handTop(m, usable) - (centres[3]! + m.cardH / 2);
+        expect(gap, `no daylight between the rows and the hand on a ${label}`).toBeGreaterThanOrEqual(
+          rowHandGap(m) - 0.001,
+        );
+      });
+
+      it(`separates the rows from each other on a ${label}`, () => {
+        const m = metricsFor(width, height, 'rows');
+        const usable = height - m.statusBand;
+        const centres = [0, 1, 2, 3].map((i) => rowBand(m, i, 4, usable));
+
+        // Smaller cards buy space between the rows; this is what that space
+        // was bought for, so it is worth asserting rather than assuming.
+        for (let i = 1; i < centres.length; i++) {
+          const clear = centres[i]! - centres[i - 1]! - m.cardH;
+          expect(clear, `rows touch on a ${label}`).toBeGreaterThanOrEqual(0);
+        }
       });
 
     }

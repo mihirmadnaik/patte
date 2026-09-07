@@ -30,6 +30,30 @@ export const ROW_EXPOSURE_ROOMY = 0.62;
 export const ROW_EXPOSURE_PHONE = 1;
 /** How wide the trick drop area is, in cards. */
 export const TRICK_WIDTH = 2.7;
+/**
+ * How large a card is allowed to be, once it is known what will fit.
+ *
+ * Not every table wants the biggest card that fits. A Sevens layout is read as
+ * four rows -- what you are looking for is where a suit has got to, not the
+ * detail of any one card -- and at full size the rows sit shoulder to shoulder
+ * with nothing between them and the hand. Giving that family smaller cards
+ * spends the difference on the gaps, which is what makes the layout legible.
+ *
+ * A 7-8 table is the opposite: five stacks across is already the tightest
+ * thing here, and every card on it is one you might have to play.
+ */
+const CARD_SCALE: Record<LayoutFamily, number> = { stacks: 1, rows: 0.8, free: 1 };
+/**
+ * The gap between the last suit row and your own hand.
+ *
+ * Without it the rows are laid out to end exactly where the hand begins, and
+ * they read as one continuous block -- the spade row looks like part of what
+ * you are holding. Counted by the fit model as well as by the placement, or
+ * the two disagree and the gap is taken out of somebody else's space.
+ */
+export function rowHandGap(m: Metrics): number {
+  return Math.round(m.cardH * 0.18);
+}
 
 /**
  * Everything the layout measures itself in.
@@ -132,7 +156,7 @@ function heightNeeded(m: Metrics, family: LayoutFamily): number {
       // Written with the same helpers the placement uses so the two cannot
       // disagree about what a row costs.
       const rows = m.cardH + 3 * m.rowExposure * m.cardH;
-      return rowsTop(m) + rows + m.cardH * 1.45 + m.statusBand;
+      return rowsTop(m) + rows + rowHandGap(m) + m.cardH * 1.45 + m.statusBand;
     }
     case 'free':
       return m.cardH * 3 + m.fanLift;
@@ -153,7 +177,14 @@ export function metricsFor(width: number, height: number, family: LayoutFamily):
 
   for (let cardW = DESKTOP_CARD_W; cardW > MIN_CARD_W; cardW--) {
     const m = derive(cardW, compact);
-    if (widthNeeded(m, family) <= usableWidth && heightNeeded(m, family) <= height) return m;
+    if (widthNeeded(m, family) <= usableWidth && heightNeeded(m, family) <= height) {
+      // Scaled down *after* solving rather than by searching for a smaller
+      // card: what fits is a fact about the screen, and how much of that a
+      // layout wants to use is a choice about the layout. Keeping them
+      // separate means a family can be given more or less room without
+      // touching the model of what fits.
+      return derive(Math.max(MIN_CARD_W, Math.round(cardW * CARD_SCALE[family])), compact);
+    }
   }
   return derive(MIN_CARD_W, compact);
 }
@@ -336,7 +367,7 @@ export function stackTableRows(m: Metrics, height: number): StackTableRows {
  */
 export function rowBand(m: Metrics, index: number, total: number, height: number): number {
   const top = rowsTop(m);
-  const bottom = handTop(m, height);
+  const bottom = handTop(m, height) - rowHandGap(m);
 
   // Space for one whole card plus a step for each row after it. The floor is
   // the same slice the fit model paid for, so the solver has already made room.

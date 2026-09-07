@@ -324,6 +324,10 @@ export function StatusBar({
   const myTurn = state.turn === you;
   const stuck = myTurn && legal.length === 0;
   const pass = ruleset.passLabel;
+  // Everyone else's count is on their name plate; yours was the one number on
+  // the table you had to work out by counting. In Sevens that matters -- being
+  // out of cards is how you win, so how close you are is the score.
+  const held = state.zones[`hand:${you}`]?.cards.length ?? 0;
 
   return (
     <div className={shell(myTurn)}>
@@ -333,6 +337,10 @@ export function StatusBar({
             ? 'No valid plays'
             : `Your turn — ${legal.length} playable`
           : `Waiting for ${name(state.turn ?? '')}`}
+      </span>
+
+      <span className="statusbar__held">
+        {held} card{held === 1 ? '' : 's'}
       </span>
 
       {pass && (

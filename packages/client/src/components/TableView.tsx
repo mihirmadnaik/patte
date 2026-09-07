@@ -85,7 +85,15 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
   const ruleset = getRuleset(state.rulesetId);
   const refereed = ruleset.legalCards !== undefined;
   const [drag, setDrag] = useState<DragState | null>(null);
-  const [handOpen, setHandOpen] = useState(false);
+  /**
+   * Which card opened the hand, if it is open.
+   *
+   * Null means it was opened some other way. The strip is as wide as the hand
+   * is long -- twenty-six cards on a phone is several screens of scrolling --
+   * so opening it at the beginning every time asks the player to go and find
+   * the card they had their thumb on a moment ago.
+   */
+  const [handOpen, setHandOpen] = useState<{ from: string | null } | null>(null);
   const peekTimer = useRef<number | null>(null);
   // Everything below positions against the real size of the table. Until it
   // has been measured there is nothing sensible to draw.
@@ -278,7 +286,7 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
       net.submit({ type: 'move', cardIds: [cardId], toZone });
       sounds.slide();
       clearSelection();
-      setHandOpen(false);
+      setHandOpen(null);
     },
     [destinations, net, clearSelection],
   );
@@ -336,7 +344,7 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
       // Too tight to aim at: open the hand rather than pretending the tap
       // picked the card the player meant.
       if (handCrowded && state.cards[cardId]?.zone === `hand:${you}`) {
-        setHandOpen(true);
+        setHandOpen({ from: cardId });
         return;
       }
 
@@ -465,7 +473,7 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
    */
   const placeSelection = useCallback(
     (zoneId: string, clientX: number, clientY: number) => {
-      setHandOpen(false);
+      setHandOpen(null);
       if (selection.length === 0) return;
       if (!state.zones[zoneId]) {
         clearSelection();
@@ -711,6 +719,7 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
           you={you}
           m={m}
           hand={myHand}
+          openedFrom={handOpen.from}
           playable={playable}
           refereed={refereed}
           selected={chosen ?? null}
@@ -723,9 +732,9 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
             // had to land on the table. It no longer does when the card can be
             // played from here: the check appears on the card you just tapped,
             // in the view you are already looking at.
-            if (!oneTap(cardId)) setHandOpen(false);
+            if (!oneTap(cardId)) setHandOpen(null);
           }}
-          onClose={() => setHandOpen(false)}
+          onClose={() => setHandOpen(null)}
         />
       )}
     </div>

@@ -14,7 +14,7 @@
  */
 
 import { canSeeFace, type GameState, type PlayerId } from '@patte/core';
-import { useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import type { Metrics } from '../geometry.js';
 import { CardView } from './CardView.js';
 
@@ -32,6 +32,7 @@ export function HandDrawer({
   you,
   m,
   hand,
+  openedFrom,
   playable,
   refereed,
   selected,
@@ -46,6 +47,8 @@ export function HandDrawer({
   m: Metrics;
   /** The hand in reading order, which is the table's to decide, not ours. */
   hand: readonly string[];
+  /** The card the player had their thumb on when this opened, if any. */
+  openedFrom: string | null;
   playable: Set<string>;
   refereed: boolean;
   /** The card chosen so far, which is where the play button goes. */
@@ -58,6 +61,33 @@ export function HandDrawer({
   onClose(): void;
 }): React.JSX.Element {
   const press = useRef<{ x: number; y: number } | null>(null);
+  const strip = useRef<HTMLDivElement>(null);
+
+  /*
+   * Open where the player was looking.
+   *
+   * Twenty-six cards at full width is several screens of strip, and opening it
+   * at the beginning every time means going to find the card you had your
+   * thumb on a moment ago. Scrolled directly rather than with
+   * `scrollIntoView`, which also scrolls whatever else it can find on the way
+   * up -- and before paint, so the strip is never seen in the wrong place.
+   */
+  useLayoutEffect(() => {
+    const box = strip.current;
+    if (!box || !openedFrom) return;
+    const card = box.querySelector<HTMLElement>(`[data-card="${openedFrom}"]`);
+    if (!card) return;
+
+    // Measured from the rectangles rather than from `offsetLeft`, which is
+    // relative to the nearest positioned ancestor -- and each card sits in a
+    // wrapper that is positioned, to hold the play button. `offsetLeft` was
+    // therefore 0 for every card, and the strip never moved.
+    const boxAt = box.getBoundingClientRect();
+    const cardAt = card.getBoundingClientRect();
+    const centreOfCard = box.scrollLeft + (cardAt.left - boxAt.left) + cardAt.width / 2;
+    const centred = centreOfCard - box.clientWidth / 2;
+    box.scrollLeft = Math.max(0, Math.min(centred, box.scrollWidth - box.clientWidth));
+  }, [openedFrom]);
 
   return (
     <>
@@ -90,7 +120,7 @@ export function HandDrawer({
         {/* The play button floats clear above its card, so the strip carries
             headroom for it -- it scrolls horizontally, which means it clips
             vertically and a button drawn outside it would be cut in half. */}
-        <div className="drawer__strip" style={{ paddingTop: confirmSize + 10 }}>
+        <div className="drawer__strip" ref={strip} style={{ paddingTop: confirmSize + 10 }}>
           {hand.map((cardId) => {
             const card = state.cards[cardId];
             if (!card) return null;

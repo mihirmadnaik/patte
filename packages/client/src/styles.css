@@ -956,6 +956,14 @@ html, body, #root {
   z-index: 9000;
 }
 
+/* How many you are holding: a fact, not an instruction, so it recedes. */
+.statusbar__held {
+  font-size: 12px;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* The pill itself, wherever it is put. */
 .statusbar--hand,
 .statusbar--corner {
@@ -1011,7 +1019,20 @@ html, body, #root {
   border-top-color: rgba(240, 192, 74, 0.4);
 }
 
-.statusbar__text { opacity: 0.85; }
+/*
+ * One line, always.
+ *
+ * The pill shrink-wraps its contents, so without this a third child squeezes
+ * the sentence into a narrow column and it wraps to three lines -- which is
+ * how adding a card count turned "Waiting for Player" into a paragraph. A
+ * name long enough to still not fit is trimmed rather than folded.
+ */
+.statusbar__text {
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .statusbar.is-mine .statusbar__text { opacity: 1; }
 
 .statusbar__act {

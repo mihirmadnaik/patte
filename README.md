@@ -205,6 +205,14 @@ out of a fanned hand is fine with a pointer and close to impossible with a
 thumb. Tapping bare felt cancels — one gesture backs out of anything
 half-finished.
 
+**Sevens gets smaller cards than fit.** A rows layout is read as four rows --
+what you are looking for is where a suit has got to, not the detail of any one
+card -- so it takes 80% of the largest card that would fit and spends the
+difference on the gaps. Measured at 393×700: 54×75 cards, 36px between rows,
+and 14px of daylight between the last row and your hand, which stops the spade
+row reading as part of what you are holding. 7-8 is untouched: five stacks
+across is already the tightest thing here.
+
 **Crowded hands open.** A Sevens hand of twenty-seven cards leaves under ten
 pixels of each one showing, so below a thumb's width the fan stops being
 something you pick from and becomes something you open: a scrolling strip at
@@ -220,6 +228,12 @@ out at **eight cards** for Sevens and **seven** for 7-8 — so 7-8, which deals
 five to the hand, is played straight from the fan almost throughout, and
 Sevens opens the sheet until the endgame. A laptop reaches twenty-eight, which
 is more than a two-handed deal, so the sheet effectively never appears there.
+
+It opens where your thumb was. Twenty-six cards at full width is several
+screens of strip, so opening at the beginning every time means going to find
+the card you were just touching; the strip scrolls to centre it before the
+first paint, clamped at both ends. Tap the rightmost card and the strip opens
+fully scrolled right.
 
 The strip finishes the play itself where it can: tap a card and the check
 appears on it *in the strip*, rather than closing the sheet and asking you to
@@ -322,6 +336,10 @@ and any hardcoded guess would cover the room code — measured, it comes out at
 48px on a phone and 170px in a very narrow window.
 
 ## A note on the status readout
+
+It carries your own card count, since everyone else's is on their name plate
+and yours was the one number on the table you had to work out by counting. In
+Sevens that is close to the score: being out of cards is how you win.
 
 Whose turn it is, and the one button that is yours to press, sit in a pill
 centred just beneath your own cards, where you are already looking. The table

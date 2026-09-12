@@ -35,6 +35,15 @@ export interface SetupSpec {
   options: Partial<TableOptions>;
   /** Who acts first. Null leaves the turn unset, as free play does. */
   firstTurn?: PlayerId | null;
+  /**
+   * Who is dealt in, **in turn order**.
+   *
+   * Defaults to the seating. A game whose play does not travel the way people
+   * happen to have sat down says so here -- पाच-तीन-दोन deals and plays from
+   * the dealer's right, and its quotas are read straight off this order, so
+   * the order is the game rather than an accident of who joined first.
+   */
+  inPlay?: PlayerId[];
   /** Opening values for the ruleset's scratchpad -- stage, dealer, and such. */
   gameData?: Record<string, string | number | boolean>;
 }
@@ -174,6 +183,28 @@ export interface Ruleset {
    * offering a button that can only ever be refused would be a lie.
    */
   passLabel?: string;
+
+  /**
+   * A trump suit the game is waiting to be named, and who must name it.
+   *
+   * Here rather than in the client because the client has no business knowing
+   * which games have trump: it used to ask "is this 7-8?" and then read that
+   * ruleset's internals directly, which made a second trump-calling game a
+   * client change rather than a ruleset one. The prompt and hint are the
+   * ruleset's own words -- what you are choosing on differs between games that
+   * otherwise look identical. What you owe comes from `standings`, which knows
+   * every quota already.
+   */
+  trumpCall?(state: GameState): { chooser: PlayerId; prompt: string } | null;
+
+  /**
+   * Where everyone stands against their quota, for the strip kept on screen.
+   *
+   * Null when there is nothing to show yet. Returning the whole table rather
+   * than one player's line keeps the ordering the ruleset's decision -- in
+   * पाच-तीन-दोन the order *is* the quotas.
+   */
+  standings?(state: GameState): { playerId: PlayerId; won: number; quota: number }[] | null;
 
   /**
    * Who the game is waiting on for a decision that is not a card.

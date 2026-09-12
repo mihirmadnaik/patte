@@ -533,7 +533,7 @@ function dealEvents(state: GameState, deps: ResolveDeps, reset: boolean): EventB
     zones: setup.zones,
     cards: setup.cards,
     options: { ...state.options, ...setup.options },
-    inPlay: players,
+    inPlay: setup.inPlay ?? players,
     firstTurn: setup.firstTurn ?? null,
   });
   // Opening scratchpad values land after the deal, since `gameStarted` wipes it.

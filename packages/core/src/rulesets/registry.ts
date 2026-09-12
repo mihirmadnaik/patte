@@ -1,12 +1,13 @@
 /** Every game the table knows how to referee. */
 
 import { freeplay } from './freeplay.js';
+import { pachTinDon } from './pach-tin-don.js';
 import { saatAath } from './saat-aath.js';
 import { sevens } from './sevens.js';
 import type { Ruleset } from './types.js';
 
 /** Everything the engine can referee, free play included. */
-export const RULESETS: readonly Ruleset[] = [freeplay, sevens, saatAath];
+export const RULESETS: readonly Ruleset[] = [freeplay, sevens, saatAath, pachTinDon];
 
 /**
  * The games a person may actually choose.
@@ -18,7 +19,7 @@ export const RULESETS: readonly Ruleset[] = [freeplay, sevens, saatAath];
  * would remove the base case; taking it out of this list simply stops
  * offering it, which is the actual intent, and is one line to undo.
  */
-export const OFFERED_RULESETS: readonly Ruleset[] = [sevens, saatAath];
+export const OFFERED_RULESETS: readonly Ruleset[] = [sevens, saatAath, pachTinDon];
 
 /** What a table plays when nobody said. */
 export const DEFAULT_RULESET_ID = OFFERED_RULESETS[0]!.id;

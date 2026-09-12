@@ -20,17 +20,30 @@
  */
 
 import { buildDeck, shuffled, type Rng } from '../deck.js';
+import { handZone } from './freeplay.js';
 import { TABLE_INTENTS, type EventBody, type GameEvent, type Intent } from '../intents.js';
-import type {
-  Card,
-  CardId,
-  GameState,
-  PlayerId,
-  Rank,
-  Suit,
-  Zone,
-  ZoneId,
-} from '../state.js';
+import type { CardId, GameState, PlayerId, Suit, Zone, ZoneId } from '../state.js';
+import {
+  DROPPED_SEVENS,
+  HAND_SUITS,
+  SHORT_PACK_RANKING as RANKING,
+  TRUMP_SUITS,
+  SUIT_LABEL,
+  TAKE,
+  TRICK_ZONE,
+  awaitingCollection,
+  beats,
+  pileZone,
+  pileZoneId,
+  stageOf,
+  suitLed,
+  trickCards,
+  trickWinner,
+  trickZone,
+  trumpOf,
+  dealerOf,
+  pileTricks,
+} from './tricks.js';
 import {
   ALLOW,
   type Ruleset,
@@ -40,36 +53,14 @@ import {
   type Verdict,
 } from './types.js';
 
-/** Strongest first. The seven exists only in hearts and spades. */
-const RANKING: readonly Rank[] = ['A', 'K', 'Q', 'J', '10', '9', '8', '7'] as const;
-const SUITS: readonly Suit[] = ['S', 'H', 'D', 'C'] as const;
-/** The order a hand is grouped in when sorted: the two reds kept apart. */
-const HAND_SUITS: readonly Suit[] = ['S', 'H', 'C', 'D'] as const;
 /** Touching your own cards: never a move, so never the ruleset's to refuse. */
 const HANDLING: readonly Intent['type'][] = ['grab', 'release', 'peek'];
-/**
- * Suits in words, for the things this ruleset says out loud.
- *
- * User-facing text belongs to the ruleset -- it already owns its name, its
- * blurb and how its scores read -- so a suit it needs to announce is spelled
- * here rather than translated back by whoever displays it.
- */
-const SUIT_LABEL: Record<Suit, string> = {
-  S: '♠ spades',
-  H: '♥ hearts',
-  D: '♦ diamonds',
-  C: '♣ clubs',
-};
 
-/** Every seven except the two the pack keeps. */
-const DROPPED_SEVENS = ['C7', 'D7'] as const;
-
-export const TRICK_ZONE: ZoneId = 'trick';
 const TRICKS_PER_ROUND = 15;
 const HAND_SIZE = 5;
 const STACKS = 5;
-/** The option value for picking up a won trick. */
-export const TAKE = 'take';
+/** Two players, so two cards to a trick. */
+const TRICK_SIZE = 2;
 
 export const DEALER_QUOTA = 7;
 export const CALLER_QUOTA = 8;
@@ -78,59 +69,7 @@ export function stackZoneId(playerId: PlayerId, index: number): ZoneId {
   return `stack:${playerId}:${index}`;
 }
 
-export function pileZoneId(playerId: PlayerId): ZoneId {
-  return `pile:${playerId}`;
-}
-
-// --- card strength ---------------------------------------------------------
-
-/** Position in the ranking; lower is stronger. Ace is 0. */
-function rankOrder(rank: Rank): number {
-  const at = RANKING.indexOf(rank);
-  return at === -1 ? RANKING.length : at;
-}
-
-/**
- * Whether `challenger` beats `leader`, given what was led and what is trump.
- *
- * Trump beats non-trump; otherwise only a card of the led suit can win, and
- * between two cards of one suit the higher rank takes it. That is the entire
- * rule -- no exceptions, which is what dropping the super-trumps buys.
- */
-export function beats(challenger: Card, leader: Card, led: Suit, trump: Suit): boolean {
-  const a = challenger.face?.suit;
-  const b = leader.face?.suit;
-  if (!a || !b || !challenger.face || !leader.face) return false;
-
-  const aTrump = a === trump;
-  const bTrump = b === trump;
-  if (aTrump !== bTrump) return aTrump;
-
-  // Same category now: either both trumps or neither. A card off-suit and
-  // off-trump cannot win whatever its rank.
-  if (!aTrump && a !== led) return false;
-  if (!aTrump && b !== led) return true;
-
-  return rankOrder(challenger.face.rank) < rankOrder(leader.face.rank);
-}
-
 // --- reading the table -----------------------------------------------------
-
-type Stage = 'calling' | 'playing';
-
-export function stageOf(state: GameState): Stage {
-  return state.gameData['stage'] === 'playing' ? 'playing' : 'calling';
-}
-
-export function trumpOf(state: GameState): Suit | null {
-  const trump = state.gameData['trump'];
-  return typeof trump === 'string' && SUITS.includes(trump as Suit) ? (trump as Suit) : null;
-}
-
-export function dealerOf(state: GameState): PlayerId | null {
-  const dealer = state.gameData['dealer'];
-  return typeof dealer === 'string' ? dealer : null;
-}
 
 export function callerOf(state: GameState): PlayerId | null {
   const dealer = dealerOf(state);
@@ -139,7 +78,7 @@ export function callerOf(state: GameState): PlayerId | null {
 
 /** How many tricks a player has taken: two cards to a trick. */
 export function tricksWon(state: GameState, playerId: PlayerId): number {
-  return Math.floor((state.zones[pileZoneId(playerId)]?.cards.length ?? 0) / 2);
+  return pileTricks(state, playerId, TRICK_SIZE);
 }
 
 /**
@@ -155,18 +94,9 @@ export function tricksCredited(state: GameState, playerId: PlayerId): number {
   return tricksWon(state, playerId) + (trickAwaitingCollection(state) === playerId ? 1 : 0);
 }
 
-/**
- * Whoever has won the trick sitting on the table, if one is waiting.
- *
- * A decided trick stays where it is until its winner picks it up. Sweeping it
- * away the instant the second card landed made it vanish before it could be
- * read, and doing it silently on their next lead was worse -- the cards
- * disappeared as a side effect of an unrelated action.
- */
+/** Whoever has won the trick sitting on the table, if one is waiting. */
 export function trickAwaitingCollection(state: GameState): PlayerId | null {
-  if (state.phase !== 'playing' || stageOf(state) !== 'playing') return null;
-  if ((state.zones[TRICK_ZONE]?.cards.length ?? 0) !== 2) return null;
-  return state.turn;
+  return awaitingCollection(state, TRICK_SIZE);
 }
 
 export function quotaFor(state: GameState, playerId: PlayerId): number {
@@ -186,21 +116,9 @@ export function availableCards(state: GameState, playerId: PlayerId): CardId[] {
   return [...hand, ...tops];
 }
 
-/** The cards currently in the middle, oldest first. */
-function trickCards(state: GameState): CardId[] {
-  return state.zones[TRICK_ZONE]?.cards ?? [];
-}
-
-/**
- * The suit that must be followed, or null when nobody has led yet.
- *
- * A trick holding two cards is a finished one still sitting on the table, so
- * the next card played leads afresh rather than following it.
- */
+/** The suit that must be followed, or null when nobody has led yet. */
 export function ledSuit(state: GameState): Suit | null {
-  const cards = trickCards(state);
-  if (cards.length !== 1) return null;
-  return state.cards[cards[0]!]?.face?.suit ?? null;
+  return suitLed(state, TRICK_SIZE);
 }
 
 /**
@@ -228,18 +146,6 @@ function legalCards(state: GameState, playerId: PlayerId): CardId[] {
 
 // --- setup -----------------------------------------------------------------
 
-function handZone(playerId: PlayerId): Zone {
-  return {
-    id: `hand:${playerId}`,
-    kind: 'hand',
-    owner: playerId,
-    layout: 'fan',
-    faceDownVisibleTo: 'owner',
-    openToOthers: false,
-    cards: [],
-  };
-}
-
 function stackZone(playerId: PlayerId, index: number): Zone {
   return {
     id: stackZoneId(playerId, index),
@@ -251,36 +157,6 @@ function stackZone(playerId: PlayerId, index: number): Zone {
     faceDownVisibleTo: 'none',
     openToOthers: false,
     cards: [],
-  };
-}
-
-function pileZone(playerId: PlayerId): Zone {
-  return {
-    id: pileZoneId(playerId),
-    kind: 'pile',
-    owner: playerId,
-    layout: 'stack',
-    // Taken tricks are turned face down and stay that way: what you won is
-    // yours, and nobody -- including you -- gets to leaf back through it.
-    faceDownVisibleTo: 'none',
-    openToOthers: false,
-    sealed: true,
-    cards: [],
-    label: 'tricks',
-  };
-}
-
-function trickZone(): Zone {
-  return {
-    id: TRICK_ZONE,
-    kind: 'trick',
-    owner: null,
-    layout: 'spread',
-    faceDownVisibleTo: 'all',
-    openToOthers: false,
-    cards: [],
-    pos: { x: 0.5, y: 0.5 },
-    label: 'trick',
   };
 }
 
@@ -310,6 +186,25 @@ export const saatAath: Ruleset = {
     const trump = trumpOf(state);
     if (!trump || event.option !== trump) return null;
     return `Trump is ${SUIT_LABEL[trump]}`;
+  },
+
+  trumpCall(state: GameState): { chooser: PlayerId; prompt: string } | null {
+    if (state.phase !== 'playing' || stageOf(state) !== 'calling') return null;
+    const chooser = callerOf(state);
+    if (!chooser) return null;
+    return {
+      chooser,
+      prompt: 'You have five cards. Name a trump suit — then the table cards are turned up and you lead.',
+    };
+  },
+
+  standings(state: GameState): { playerId: PlayerId; won: number; quota: number }[] | null {
+    if (state.phase !== 'playing') return null;
+    return state.inPlay.map((playerId) => ({
+      playerId,
+      won: tricksCredited(state, playerId),
+      quota: quotaFor(state, playerId),
+    }));
   },
 
   inlineChoice(state: GameState, playerId: PlayerId): { label: string; option: string } | null {
@@ -403,7 +298,7 @@ export const saatAath: Ruleset = {
     if (stageOf(state) === 'calling') {
       if (intent.type === 'choose') {
         if (actor !== callerOf(state)) return { ok: false, reason: 'the other player calls trump' };
-        if (!SUITS.includes(intent.option as Suit)) return { ok: false, reason: 'pick a suit' };
+        if (!TRUMP_SUITS.includes(intent.option as Suit)) return { ok: false, reason: 'pick a suit' };
         return ALLOW;
       }
       return TABLE_INTENTS.includes(intent.type) || HANDLING.includes(intent.type)
@@ -537,8 +432,8 @@ export const saatAath: Ruleset = {
       const led = lead?.face?.suit;
       if (!lead || !reply || !led) return follow;
 
-      const winner = beats(reply, lead, led, trump) ? player : opponent;
-      follow.push({ type: 'turnSet', playerId: winner });
+      const winner = trickWinner(state, inTrick, player, [opponent, player], trump);
+      if (winner) follow.push({ type: 'turnSet', playerId: winner });
       return follow;
     }
 

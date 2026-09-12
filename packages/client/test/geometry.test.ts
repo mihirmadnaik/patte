@@ -11,6 +11,7 @@ import {
   handTop,
   rowsTop,
   rowHandGap,
+  trickBand,
   trickBandMargin,
   metricsFor,
   fanPlacement,
@@ -295,6 +296,41 @@ describe('nothing collides, at any size', () => {
         expect(margin, `no room beside the trick on a ${label}`).toBeGreaterThan(40);
       });
     }
+  });
+
+  describe('पाच-तीन-दोन', () => {
+    for (const { label, width, height } of SIZES) {
+      it(`keeps the trick clear of the plates and the hand on a ${label}`, () => {
+        const m = metricsFor(width, height, 'trick');
+        const usable = height - m.statusBand;
+        const centre = trickBand(m, usable);
+
+        const top = centre - m.cardH / 2;
+        const bottom = centre + m.cardH / 2;
+
+        expect(top, `the trick rides up into the name plates on a ${label}`).toBeGreaterThanOrEqual(
+          rowsTop(m) - 0.001,
+        );
+        expect(bottom, `the trick runs into the hand on a ${label}`).toBeLessThanOrEqual(
+          handTop(m, usable) - rowHandGap(m) + 0.001,
+        );
+      });
+
+      it(`fits a card per player across a ${label}`, () => {
+        const m = metricsFor(width, height, 'trick');
+        // Three cards at the spread pitch, inside the drop area they land in.
+        const spread = m.cardW + 2 * m.cardW * 0.35;
+        expect(spread).toBeLessThanOrEqual(TRICK_WIDTH * m.cardW);
+        expect(TRICK_WIDTH * m.cardW).toBeLessThanOrEqual(width);
+      });
+    }
+
+    it('leaves the cards full size, since the table is otherwise empty', () => {
+      // Nothing competes for the room here: no rows, no stacks, and opponents'
+      // hands are not drawn. A shrunken card would be shrinking for nothing.
+      const m = metricsFor(1280, 745, 'trick');
+      expect(m.cardW).toBe(DESKTOP_CARD_W);
+    });
   });
 
   describe('Sevens', () => {

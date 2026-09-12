@@ -20,6 +20,7 @@ import {
   seatAngle,
   stackRowPosition,
   stackTableRows,
+  trickBand,
   trickBandMargin,
   seatLayout,
   topStripSeat,
@@ -116,6 +117,9 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
     .sort((a, b) => a.id.localeCompare(b.id));
   const hasRows = rowZones.length > 0;
   const hasStacks = Object.values(state.zones).some((zone) => zone.kind === 'stack');
+  // A trick in the middle and nothing else on the table: three players around
+  // one pile of cards, which is neither the stacks table nor the rows one.
+  const hasTrick = Object.values(state.zones).some((zone) => zone.kind === 'trick');
 
   // The status pill sits under the hand, so the table stops short of it. The
   // band is reserved for the whole round rather than only while the pill
@@ -123,7 +127,8 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
   // and goes.
   // Card sizes are solved for the box actually available rather than fixed, so
   // the same layout serves a laptop and a phone.
-  const family: LayoutFamily = hasStacks ? 'stacks' : hasRows ? 'rows' : 'free';
+  const family: LayoutFamily =
+    hasStacks ? 'stacks' : hasRows ? 'rows' : hasTrick ? 'trick' : 'free';
   const m = metricsFor(bounds.width || 1, bounds.height || 1, family);
   const statusBand = refereed && state.phase === 'playing' ? m.statusBand : 0;
   const usable = Math.max(bounds.height - statusBand, m.cardH * 2);
@@ -132,11 +137,13 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
 
   const seatOf = useCallback(
     (playerId: string) => {
-      if (!hasRows) return seatLayout(m, seatAngle(state, playerId, you), bounds.width, bounds.height);
+      if (!hasRows && !hasTrick) {
+        return seatLayout(m, seatAngle(state, playerId, you), bounds.width, bounds.height);
+      }
       const index = others.indexOf(playerId);
       return topStripSeat(m, Math.max(index, 0), others.length, bounds.width);
     },
-    [hasRows, state, you, bounds, others, m],
+    [hasRows, hasTrick, state, you, bounds, others, m],
   );
 
   const zoneOrigin = useCallback(
@@ -154,8 +161,8 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         return seatOf(zone.owner ?? '').hand;
       }
 
-      if (zone.kind === 'trick' && hasStacks) {
-        return { x: bounds.width / 2, y: rows.trick };
+      if (zone.kind === 'trick') {
+        return { x: bounds.width / 2, y: hasStacks ? rows.trick : trickBand(m, usable) };
       }
       if (zone.kind === 'row') {
         const index = rowZones.findIndex((candidate) => candidate.id === zone.id);
@@ -660,14 +667,21 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         </button>
       )}
 
+      {/* The chips sit in the margins either side of the trick, so there are
+          two places for them. Past two players the trump strip along the top
+          carries everyone's count instead. */}
       {measured &&
         m.compact &&
+        state.inPlay.length <= 2 &&
         Object.values(state.zones)
           .filter((zone) => zone.kind === 'pile')
           .map((zone) => {
             const mine = zone.owner === you;
             const margin = trickBandMargin(m, bounds.width);
-            const tricks = Math.floor(zone.cards.length / 2);
+            // One card per player to a trick. Two was right when the only
+            // game with piles seated two, and wrong the moment a third did.
+            const perTrick = Math.max(state.inPlay.length, 1);
+            const tricks = Math.floor(zone.cards.length / perTrick);
             return (
               <div
                 key={zone.id}

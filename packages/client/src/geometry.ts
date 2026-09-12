@@ -42,7 +42,7 @@ export const TRICK_WIDTH = 2.7;
  * A 7-8 table is the opposite: five stacks across is already the tightest
  * thing here, and every card on it is one you might have to play.
  */
-const CARD_SCALE: Record<LayoutFamily, number> = { stacks: 1, rows: 0.8, free: 1 };
+const CARD_SCALE: Record<LayoutFamily, number> = { stacks: 1, rows: 0.8, trick: 1, free: 1 };
 /**
  * The gap between the last suit row and your own hand.
  *
@@ -83,7 +83,7 @@ export interface Metrics {
 }
 
 /** Which shape of table is being laid out; each has its own tightest fit. */
-export type LayoutFamily = 'stacks' | 'rows' | 'free';
+export type LayoutFamily = 'stacks' | 'rows' | 'trick' | 'free';
 
 function derive(cardW: number, compact: boolean): Metrics {
   const scale = cardW / DESKTOP_CARD_W;
@@ -134,6 +134,10 @@ function widthNeeded(m: Metrics, family: LayoutFamily): number {
     // overlapped remainder has to fit.
     case 'rows':
       return m.cardW + 12 * m.cardW * 0.26;
+    // One trick in the middle and nothing else on the table. The drop area is
+    // the widest thing, and it is already sized for a card per player.
+    case 'trick':
+      return TRICK_WIDTH * m.cardW;
     case 'free':
       return m.cardW * 3;
   }
@@ -158,6 +162,11 @@ function heightNeeded(m: Metrics, family: LayoutFamily): number {
       const rows = m.cardH + 3 * m.rowExposure * m.cardH;
       return rowsTop(m) + rows + rowHandGap(m) + m.cardH * 1.45 + m.statusBand;
     }
+    case 'trick':
+      // Name plates, then a trick a card tall, then the same gap and hand the
+      // rows layout uses. Opponents' hands are not drawn, so this is a roomy
+      // table and the cards stay at full size.
+      return rowsTop(m) + m.cardH + rowHandGap(m) + m.cardH * 1.45 + m.statusBand;
     case 'free':
       return m.cardH * 3 + m.fanLift;
   }
@@ -354,6 +363,20 @@ export function stackTableRows(m: Metrics, height: number): StackTableRows {
   const hand = y + m.cardH / 2;
 
   return { opponentName, opponentStacks, trick, ownStacks, hand };
+}
+
+/**
+ * Where the trick sits: centred in the space between the opponents' strip and
+ * your hand.
+ *
+ * Written from the same two edges the fit model uses, so the space it is
+ * centred in is the space that was paid for. Every layout bug in this file has
+ * come from a model that restated the placement instead of sharing it.
+ */
+export function trickBand(m: Metrics, height: number): number {
+  const top = rowsTop(m);
+  const bottom = handTop(m, height) - rowHandGap(m);
+  return (top + Math.max(bottom, top + m.cardH)) / 2;
 }
 
 /**

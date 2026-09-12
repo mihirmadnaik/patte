@@ -7,12 +7,7 @@
  */
 
 import {
-  callerOf,
-  dealerOf,
   getRuleset,
-  quotaFor,
-  stageOf,
-  tricksCredited,
   trumpOf,
   type GameState,
   type PlayerId,
@@ -64,11 +59,10 @@ export function GamePanel({
     return <RedealRequest state={state} you={you} net={net} />;
   }
 
-  // A game can pause mid-deal for a decision. 7-8 does: the non-dealer names
-  // trump before anything is turned face up.
-  if (state.phase === 'playing' && ruleset.id === 'saat-aath' && stageOf(state) === 'calling') {
-    return <TrumpCall state={state} you={you} net={net} />;
-  }
+  // A game can pause mid-deal for a decision: both trick games do, and a third
+  // would too. Which game it is, and what it says, is the ruleset's to answer.
+  const call = ruleset.trumpCall?.(state) ?? null;
+  if (call) return <TrumpCall state={state} you={you} net={net} call={call} />;
 
   if (ruleset.autoStart && state.phase === 'playing') return null; // free play needs no referee
 
@@ -384,13 +378,19 @@ function TrumpCall({
   state,
   you,
   net,
+  call,
 }: {
   state: GameState;
   you: PlayerId;
   net: Connection;
+  call: { chooser: PlayerId; prompt: string };
 }): React.JSX.Element {
-  const caller = callerOf(state);
-  const mine = caller === you;
+  const mine = call.chooser === you;
+  // What you owe is not this component's to know: the ruleset publishes every
+  // quota, and the totals fall out of them.
+  const rows = getRuleset(state.rulesetId).standings?.(state) ?? null;
+  const mine_ = rows?.find((row) => row.playerId === you);
+  const tricks = rows?.reduce((total, row) => total + row.quota, 0) ?? 0;
 
   return (
     <div className="panel panel--soft">
@@ -398,8 +398,8 @@ function TrumpCall({
         <h2>{mine ? 'Call trump' : 'Waiting for trump'}</h2>
         <p>
           {mine
-            ? 'You have five cards. Name a trump suit — then the table cards are turned up and you lead.'
-            : `${state.players[caller ?? '']?.name ?? 'The other player'} is choosing a trump suit.`}
+            ? call.prompt
+            : `${state.players[call.chooser]?.name ?? 'Another player'} is choosing a trump suit.`}
         </p>
 
         {mine && (
@@ -417,9 +417,11 @@ function TrumpCall({
           </div>
         )}
 
-        <p className="panel__hint">
-          You must take {mine ? 8 : 7} of the 15 tricks{mine ? '' : ' as dealer'}.
-        </p>
+        {mine_ && (
+          <p className="panel__hint">
+            You must take {mine_.quota} of the {tricks} tricks.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -433,35 +435,34 @@ function TrumpCall({
  * ruleset's scratchpad and tricks won are just the size of a pile.
  */
 export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }): React.JSX.Element | null {
-  if (getRuleset(state.rulesetId).id !== 'saat-aath') return null;
-  if (state.phase !== 'playing' || stageOf(state) !== 'playing') return null;
+  const rows = getRuleset(state.rulesetId).standings?.(state) ?? null;
+  if (!rows || rows.length === 0) return null;
 
+  // Trump is not named until partway through the deal, so the strip carries
+  // the quotas alone until it is. Both facts are otherwise invisible: trump
+  // lives in the ruleset's scratchpad and tricks won are just the size of a
+  // pile.
   const trump = trumpOf(state);
-  if (!trump) return null;
-
-  const dealer = dealerOf(state);
   const name = (id: PlayerId): string => (id === you ? 'You' : (state.players[id]?.name ?? 'Player'));
 
   return (
     <div className="trumpstrip">
-      <span className={`trumpstrip__trump${trump === 'H' || trump === 'D' ? ' is-red' : ''}`}>
-        <em>trump</em>
-        {SUIT_GLYPHS[trump]}
-      </span>
+      {trump && (
+        <span className={`trumpstrip__trump${trump === 'H' || trump === 'D' ? ' is-red' : ''}`}>
+          <em>trump</em>
+          {SUIT_GLYPHS[trump]}
+        </span>
+      )}
 
-      {state.inPlay.map((playerId) => {
-        const won = tricksCredited(state, playerId);
-        const quota = quotaFor(state, playerId);
-        return (
-          <span key={playerId} className={`trumpstrip__player${won >= quota ? ' is-met' : ''}`}>
-            <em>
-              {name(playerId)}
-              {playerId === dealer ? ' (deals)' : ''}
-            </em>
-            {won}<i>/{quota}</i>
-          </span>
-        );
-      })}
+      {rows.map((row) => (
+        <span
+          key={row.playerId}
+          className={`trumpstrip__player${row.won >= row.quota ? ' is-met' : ''}`}
+        >
+          <em>{name(row.playerId)}</em>
+          {row.won}<i>/{row.quota}</i>
+        </span>
+      ))}
     </div>
   );
 }

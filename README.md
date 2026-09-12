@@ -149,6 +149,23 @@ would interrupt a hand is refused outright; every path that deals goes through
 one shared builder, so a deal that arrived by consent is indistinguishable
 from any other.
 
+**पाच-तीन-दोन** (Paach Teen Don — elsewhere 2-3-5, 3-2-5 or teen do paanch) —
+three players, the same thirty-card pack, ten tricks, and three quotas that add
+up to exactly that: the dealer's right takes five, the dealer's left three, the
+dealer two.
+
+**The game is named after its own turn order.** The five leads, then the three,
+then the two, so one ordering of the players gives both who plays when and who
+owes what — `inPlay` is built in that order and the quotas are read off it by
+position. Two facts that must agree are better stored as one.
+
+The deal comes in two halves with the trump call between them, and that split
+*is* the game: the caller names trump on the strength of five cards, with the
+other five still in the stock where nobody can see them. Dealing all ten first
+would be a different and much easier decision, so the second half genuinely
+waits. There is a test that reads the caller's own projection and asserts those
+cards have no faces in it.
+
 **सात-आठ** (Saat-Aath, 7-8) — two players, thirty cards, fifteen tricks. Each stack shows the
 back of its buried card peeking out from under the face-up one, so you can see
 at a glance which stacks still hold something and which are down to their last
@@ -317,6 +334,27 @@ trump call and was refused during play as *"not part of this game"*. The
 regression test walks every stage of both rulesets and asserts that no
 table-level intent is ever answered that way; reverting the fix fails it four
 times over.
+
+## A note on trick-taking
+
+Two games now share a pack, a trump call and a way of deciding tricks, so those
+live in `rulesets/tricks.ts` rather than twice: `beats`, `trickWinner`, the
+stage and trump accessors, and the zones a trick game needs. Which card wins is
+the rule least worth having two copies of.
+
+`trickWinner` does the one non-obvious thing: it works out where the round of
+play began by counting back from whoever closed the trick, rather than
+recording the leader. A trick holds one card per player from the leader
+onwards, so the leader is always `cards.length - 1` seats behind the player who
+finished it — and a fact you can derive is a fact that cannot fall out of step.
+
+**The client no longer names a game.** It used to ask "is this 7-8?" and then
+read that ruleset's internals to draw the trump panel and the quota strip,
+which made a second trick game a client change rather than a ruleset one. Two
+hooks replaced that: `trumpCall` says who must name a suit and what to tell
+them, and `standings` gives every player's tricks against their quota. The
+panel's "you must take N of M" is now arithmetic over `standings` rather than
+the numbers 8, 7 and 15 written into the view.
 
 ## A note on stacking
 
@@ -489,6 +527,8 @@ after(state, event)                  // what follows from what just happened?
 legalCards?(state, playerId)         // optional: what the UI should light up
 destinationsFor?(s, playerId, card)  // optional: where that card may go
 handOrder?                           // optional: how a hand reads best
+trumpCall?(state)                    // optional: who names a suit, and what to say
+standings?(state)                    // optional: tricks against quota, per player
 awaitingChoice?(state)               // optional: play is paused for a decision
 scoreDirection, scoreNote            // which way the scoreboard reads
 passLabel?                           // omit when the game has no passing

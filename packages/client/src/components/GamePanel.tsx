@@ -459,7 +459,10 @@ export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }):
           key={row.playerId}
           className={`trumpstrip__player${row.won >= row.quota ? ' is-met' : ''}`}
         >
-          <em>{name(row.playerId)}</em>
+          <em>
+            {name(row.playerId)}
+            {row.note ? ` (${row.note})` : ''}
+          </em>
           {row.won}<i>/{row.quota}</i>
         </span>
       ))}

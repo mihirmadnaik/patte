@@ -49,6 +49,7 @@ import {
   type Ruleset,
   type Score,
   type SetupContext,
+  type StandingsRow,
   type SetupSpec,
   type Verdict,
 } from './types.js';
@@ -198,12 +199,16 @@ export const saatAath: Ruleset = {
     };
   },
 
-  standings(state: GameState): { playerId: PlayerId; won: number; quota: number }[] | null {
+  standings(state: GameState): StandingsRow[] | null {
     if (state.phase !== 'playing') return null;
+    const dealer = dealerOf(state);
     return state.inPlay.map((playerId) => ({
       playerId,
       won: tricksCredited(state, playerId),
       quota: quotaFor(state, playerId),
+      // Whose deal it is decides who has the easier quota, so it is worth
+      // saying on a table of two where the roles swap every round.
+      ...(playerId === dealer ? { note: 'deals' } : {}),
     }));
   },
 

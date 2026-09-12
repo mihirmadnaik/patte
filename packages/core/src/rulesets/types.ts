@@ -23,6 +23,15 @@ import type {
   ZoneId,
 } from '../state.js';
 
+/** One player's line in the strip kept on screen during a hand. */
+export interface StandingsRow {
+  playerId: PlayerId;
+  won: number;
+  quota: number;
+  /** A word about this seat, if the game has one -- 7-8 marks the dealer. */
+  note?: string;
+}
+
 /** Suits left to right, and ranks within a suit left to right. */
 export interface HandOrder {
   suits: readonly Suit[];
@@ -204,7 +213,7 @@ export interface Ruleset {
    * than one player's line keeps the ordering the ruleset's decision -- in
    * पाच-तीन-दोन the order *is* the quotas.
    */
-  standings?(state: GameState): { playerId: PlayerId; won: number; quota: number }[] | null;
+  standings?(state: GameState): StandingsRow[] | null;
 
   /**
    * Who the game is waiting on for a decision that is not a card.

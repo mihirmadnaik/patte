@@ -55,6 +55,7 @@ import {
   type Score,
   type SetupContext,
   type SetupSpec,
+  type StandingsRow,
   type Verdict,
 } from './types.js';
 
@@ -206,15 +207,17 @@ export const pachTinDon: Ruleset = {
     };
   },
 
-  standings(state: GameState): { playerId: PlayerId; won: number; quota: number }[] | null {
+  standings(state: GameState): StandingsRow[] | null {
     // Available from the moment the cards go out, not just once play starts:
     // the player choosing trump is choosing it knowing they owe five, and
     // that is precisely when it is worth having on screen.
     if (state.phase !== 'playing') return null;
+    const dealer = dealerOf(state);
     return state.inPlay.map((playerId) => ({
       playerId,
       won: tricksStanding(state, playerId),
       quota: quotaFor(state, playerId),
+      ...(playerId === dealer ? { note: 'deals' } : {}),
     }));
   },
 

@@ -218,8 +218,23 @@ wss.on('connection', (socket: WebSocket) => {
           'That table is no longer in memory — tables last only as long as the server keeps running. Start a new one, or join another with its code.',
         );
       }
-      room = found;
       playerId = message.playerId?.slice(0, 64) || crypto.randomUUID();
+
+      // A full table turns people away at the door rather than seating them
+      // and refusing to deal later. `maxPlayers` used to be checked only when
+      // somebody pressed Deal, so one person too many following the link left
+      // the whole table stuck with an error nobody could clear.
+      //
+      // Somebody already seated is not a newcomer, however full the table is:
+      // that is a reconnection, and refusing it would lock players out of
+      // their own game.
+      if (found.isFull && found.isNewcomer(playerId)) {
+        return fail(
+          `That table is full — ${found.table.ruleset.name} seats ${found.table.ruleset.maxPlayers}. Start your own, or wait for a seat.`,
+        );
+      }
+
+      room = found;
       const name = (message.name || 'Player').slice(0, 24);
       mySocket = { send: (d) => socket.send(d), close: () => socket.close() };
       room.join(playerId, name, mySocket);

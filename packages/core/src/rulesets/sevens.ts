@@ -205,6 +205,18 @@ export const sevens: Ruleset = {
   autoStart: false,
   scoreDirection: 'low',
   scoreNote: 'Lowest total leads — you score what you are left holding.',
+
+  howToPlay: {
+    goal: 'Be the first player out of cards. Everyone else scores what they were caught holding, and low wins.',
+    rules: [
+      'The whole pack is dealt out. Four rows are built on the table, one for each suit.',
+      'A row grows outward from its seven — six, five, four down one way and eight, nine, ten up the other. The ace is low, so a row runs from ace up to king.',
+      'Whoever holds the seven of hearts opens, and must play it.',
+      'On your turn you play one card that continues a row, or a seven to start one.',
+      'You must play if you can. Only when nothing you hold fits anywhere may you skip your turn — and the table will not let you skip while you are holding something playable.',
+      'The moment somebody plays their last card the round is over, and the rest score the cards still in their hands: ace one, pips their own number, jack eleven, queen twelve, king thirteen.',
+    ],
+  },
   // "Knock" is the traditional word and means nothing to anybody meeting the
   // game here for the first time. The button is only ever pressable when you
   // are stuck, so the plain description of what it does is the better label --

@@ -408,7 +408,31 @@ html, body, #root {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
-.lobby h1 { margin: 0 0 4px; font-size: 30px; letter-spacing: 0.02em; }
+/* The title, with the way in to the instructions beside it. */
+.lobby__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 4px;
+}
+
+.lobby__help {
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.24);
+  color: #e8efe9;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.lobby__help:hover { border-color: var(--accent); color: var(--accent); }
+
+.lobby h1 { margin: 0; font-size: 30px; letter-spacing: 0.02em; }
 .lobby p { margin: 0 0 22px; opacity: 0.65; font-size: 14px; line-height: 1.5; }
 .lobby label { display: block; font-size: 12px; opacity: 0.7; margin-bottom: 16px; }
 
@@ -555,6 +579,52 @@ html, body, #root {
    overflow past the top, out of reach of the scroller. */
 .panel > .panel__card { margin: auto; }
 
+/* On the home screen there is no toolbar to sit below, so the overlay covers
+   the window rather than leaving a band of nothing at the top. */
+.panel--full { inset: 0; }
+
+/* Something to read rather than something to answer: wider, ranged left, and
+   with room between the lines. */
+.panel__card--read {
+  width: min(460px, 94vw);
+  text-align: left;
+  max-height: 100%;
+}
+
+.panel__card--read h2 { margin: 0 0 10px; font-size: 21px; }
+
+.panel__card--read h3 {
+  margin: 20px 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.panel__card--read p { margin: 0 0 12px; font-size: 13px; opacity: 0.78; line-height: 1.6; }
+
+.help__list, .help__steps {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+  opacity: 0.78;
+}
+
+.help__list li, .help__steps li { margin-bottom: 7px; }
+.help__list { list-style: disc; }
+.help__steps { list-style: decimal; }
+.panel__card--read strong { color: #f2f4f2; font-weight: 600; }
+
+.help__note {
+  margin: 16px 0 18px !important;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.26);
+  font-size: 12px !important;
+  opacity: 0.65 !important;
+}
+
 .panel__card {
   width: min(380px, 90vw);
   padding: 26px;
@@ -638,6 +708,34 @@ html, body, #root {
 /* Game picker in the lobby. */
 .games { border: 0; padding: 0; margin: 0 0 18px; }
 .games legend { font-size: 12px; opacity: 0.7; padding: 0 0 6px; }
+
+/* A game, with its own explanation one tap away. */
+.games__row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.games__row > label { flex: 1; margin: 0; }
+
+.games__rules {
+  flex: 0 0 auto;
+  width: 40px;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.24);
+  color: #e8efe9;
+  opacity: 0.7;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 120ms var(--ease), opacity 120ms var(--ease);
+}
+
+.games__rules:hover { border-color: var(--accent); color: var(--accent); opacity: 1; }
 
 .games label {
   display: grid;

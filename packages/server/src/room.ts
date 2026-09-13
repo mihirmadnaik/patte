@@ -85,6 +85,16 @@ export class Room {
 
   // --- membership ----------------------------------------------------------
 
+  /** Whether this player would be taking a new seat rather than returning. */
+  isNewcomer(playerId: PlayerId): boolean {
+    return this.table.state.players[playerId] === undefined;
+  }
+
+  /** Whether the table has room for one more. */
+  get isFull(): boolean {
+    return this.table.state.seatOrder.length >= this.table.ruleset.maxPlayers;
+  }
+
   join(playerId: PlayerId, name: string, socket: Socket): Connection {
     this.lastActivity = Date.now();
 
@@ -121,8 +131,22 @@ export class Room {
 
     this.connections.delete(playerId);
     this.lastActivity = Date.now();
-    // The seat and hand are kept so the player can come back to them; only
-    // their locks are dropped, so nobody is left unable to touch a card.
+
+    /*
+     * A seat is worth holding only when there is something in it.
+     *
+     * Mid-hand there is: cards, tricks, a turn -- so the seat and the hand are
+     * kept and only the locks are dropped, and a player whose phone went to
+     * sleep gets everything back. In the lobby there is nothing to come back
+     * to, and holding the chair anyway is how a table of three ends up unable
+     * to start: somebody joins, closes their tab, and the seat they are not
+     * using blocks the player who would fill it.
+     */
+    if (this.table.state.phase === 'lobby') {
+      this.broadcast(this.table.removePlayer(playerId));
+      return;
+    }
+
     this.broadcast(this.table.setConnected(playerId, false));
   }
 

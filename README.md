@@ -471,6 +471,57 @@ back up when the tab is shown again or the network returns: a tab left open on
 a dead table used to poke the server every eight seconds for as long as it
 existed, which is enough on its own to keep a sleeping instance awake.
 
+## Seats
+
+A seat is worth holding only when there is something in it.
+
+Mid-hand there is: cards, tricks, a turn. So a closed socket marks the player
+disconnected and keeps everything, and somebody whose phone went to sleep gets
+their game back. **In the lobby there is nothing to come back to**, and holding
+the chair anyway is how a table of three ends up unable to start — somebody
+joins, closes their tab, and the seat they are not using blocks the player who
+would fill it. So a departure before the deal vacates the seat outright.
+
+Two things had to be true for that to be safe, and neither was:
+
+- **Ownership passes on.** `isOwner` is handed out once, to whoever sits down
+  at an empty table, so an owner who left took the role with them — leaving a
+  table nobody could set the match length on, end, or ask for a redeal on, for
+  good. The `playerLeft` reducer now promotes whoever is left.
+- **A full table turns people away at the door.** `maxPlayers` was checked only
+  when somebody pressed Deal, so one person too many following the link left
+  the whole table stuck behind an error nobody could clear. The join is refused
+  instead — while anyone *already seated* is still let back in, however full it
+  is, because that is a reconnection rather than a new arrival.
+
+Still open: a player who goes offline **mid-hand** blocks the table, since it
+is their turn and the redeal vote waits on everyone still in play, including
+them. That is a design question — how long is "away", and who decides somebody
+is not coming back — rather than a bug, and it bites harder at three players
+than it did at two.
+
+## Help
+
+The home screen has a **Help** button, and every game in the picker has a `?`
+beside it. What goes in each is split the same way the code is:
+
+- **The rules belong to the ruleset** (`howToPlay`), next to its name, its
+  blurb and its score note. A help screen holding its own copy of the rules is
+  a second place for them to be wrong.
+- **How you work the table belongs to the client** — tapping a card, the check
+  button, the scrolling hand, Sort. Those are not rules of any game.
+
+The game-specific half of that second list is *derived* rather than written
+out: a game that names trump has a `trumpCall`, one where tricks are gathered
+by hand has an `inlineChoice`, one you can be stuck in has a `passLabel`. So
+बदाम सात's panel mentions skipping a turn and not trump, पाच-तीन-दोन's mentions
+trump and taking tricks and not skipping, and neither list can drift from what
+the game actually does.
+
+The `?` sits beside each game's label rather than inside it: a button within a
+`<label>` is still a click on the label, so it would pick the game as well as
+explain it.
+
 ## Leaving, and coming back
 
 **Leave** in the toolbar returns to the home screen: it drops the code from
@@ -527,6 +578,7 @@ after(state, event)                  // what follows from what just happened?
 legalCards?(state, playerId)         // optional: what the UI should light up
 destinationsFor?(s, playerId, card)  // optional: where that card may go
 handOrder?                           // optional: how a hand reads best
+howToPlay?                           // optional: the rules, for the help panel
 trumpCall?(state)                    // optional: who names a suit, and what to say
 standings?(state)                    // optional: tricks against quota, per player
 awaitingChoice?(state)               // optional: play is paused for a decision

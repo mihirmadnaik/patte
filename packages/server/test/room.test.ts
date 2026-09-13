@@ -242,6 +242,90 @@ describe('reconnection', () => {
   });
 });
 
+/**
+ * Seats, and when they stop being yours.
+ *
+ * Free play deals the moment the table exists, so none of this is reachable
+ * there -- which is exactly why it went unnoticed until three people tried to
+ * sit down for a game that waits in a lobby first.
+ */
+describe('holding a seat', () => {
+  function lobby(names: string[]): { room: Room; clients: Record<string, FakeClient> } {
+    const room = new Room('LOBBY', 'pach-tin-don');
+    const clients: Record<string, FakeClient> = {};
+    for (const name of names) {
+      const client = new FakeClient();
+      room.join(name, name, client.socket);
+      clients[name] = client;
+    }
+    return { room, clients };
+  }
+
+  it('frees the chair when somebody closes their tab in the lobby', () => {
+    const { room, clients } = lobby(['ana', 'ben']);
+    expect(room.table.state.phase).toBe('lobby');
+
+    room.leave('ben', clients['ben']!.socket);
+
+    // Not "here but away": gone. There is no hand to come back to, and the
+    // chair is the only thing they were holding.
+    expect(room.table.state.players['ben']).toBeUndefined();
+    expect(room.table.state.seatOrder).toEqual(['ana']);
+  });
+
+  it('lets the player who was waiting take the seat', () => {
+    // The reported bug, start to finish: two sit down, one gives up and
+    // closes their tab, and the third arrives to find the table unstartable.
+    const { room, clients } = lobby(['ana', 'ben']);
+    room.leave('ben', clients['ben']!.socket);
+
+    room.join('cal', 'cal', new FakeClient().socket);
+    room.join('dee', 'dee', new FakeClient().socket);
+
+    expect(room.table.state.seatOrder).toEqual(['ana', 'cal', 'dee']);
+    const started = room.table.submit('ana', { type: 'startGame' });
+    expect(started.ok, started.ok ? '' : started.reason).toBe(true);
+  });
+
+  it('keeps the chair once the cards are out', () => {
+    const { room, clients } = lobby(['ana', 'ben', 'cal']);
+    const started = room.table.submit('ana', { type: 'startGame' });
+    expect(started.ok).toBe(true);
+
+    room.leave('ben', clients['ben']!.socket);
+
+    // Mid-hand they hold cards, tricks and a turn. Taking the seat away would
+    // be taking the game away from somebody whose phone went to sleep.
+    expect(room.table.state.players['ben']?.connected).toBe(false);
+    expect(room.table.state.zones['hand:ben']?.cards).toHaveLength(5);
+    expect(room.table.state.seatOrder).toContain('ben');
+  });
+
+  it('passes ownership on when the owner gives up their chair', () => {
+    const { room, clients } = lobby(['ana', 'ben']);
+    expect(room.table.state.players['ana']?.isOwner).toBe(true);
+
+    room.leave('ana', clients['ana']!.socket);
+
+    // Otherwise the table is left with nobody who may set the match length,
+    // end the match or ask for a redeal -- and no way to appoint one.
+    expect(room.table.state.players['ben']?.isOwner).toBe(true);
+  });
+
+  it('knows a full table from one with room', () => {
+    const { room } = lobby(['ana', 'ben']);
+    expect(room.isFull).toBe(false);
+
+    room.join('cal', 'cal', new FakeClient().socket);
+    expect(room.isFull).toBe(true);
+
+    // A newcomer is turned away; somebody already seated is reconnecting and
+    // must not be, however full the table is.
+    expect(room.isNewcomer('dee')).toBe(true);
+    expect(room.isNewcomer('ana')).toBe(false);
+  });
+});
+
 describe('a refereed room', () => {
   it('waits in the lobby and deals only when started', () => {
     const room = new Room('SEVN', 'sevens');

@@ -23,6 +23,24 @@ import type {
   ZoneId,
 } from '../state.js';
 
+/**
+ * How the game is played, in its own words.
+ *
+ * Here rather than in the client for the same reason the name, the blurb and
+ * the score note are: a game's rules are the game's business, and a help
+ * screen that kept its own copy would be a second place for them to be wrong.
+ *
+ * Only the rules. How you work the table -- tapping a card, the check button,
+ * sorting your hand -- is the client's invention, and the client says it,
+ * working out the game-specific parts from what the ruleset already declares.
+ */
+export interface HowToPlay {
+  /** One line on what you are trying to do. */
+  goal: string;
+  /** The rules, a point at a time. */
+  rules: string[];
+}
+
 /** One player's line in the strip kept on screen during a hand. */
 export interface StandingsRow {
   playerId: PlayerId;
@@ -184,6 +202,9 @@ export interface Ruleset {
   scoreDirection: 'low' | 'high';
   /** One line under the scoreboard explaining what the numbers are. */
   scoreNote: string;
+
+  /** The rules, for the help panel. */
+  howToPlay?: HowToPlay;
 
   /**
    * The word on the pass button, when the game has passing at all.

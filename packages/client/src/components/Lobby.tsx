@@ -1,5 +1,6 @@
-import { OFFERED_RULESETS } from '@patte/core';
+import { OFFERED_RULESETS, type Ruleset } from '@patte/core';
 import { useState } from 'react';
+import { HelpPanel, RulesPanel } from './Help.js';
 
 /** Create a table or join one by code. No accounts, no lobby, no matchmaking. */
 export function Lobby({
@@ -15,6 +16,8 @@ export function Lobby({
   const [busy, setBusy] = useState(false);
   const [rulesetId, setRulesetId] = useState(OFFERED_RULESETS[0]!.id);
   const [rounds, setRounds] = useState(3);
+  /** Which explanation is open: the app's, one game's, or none. */
+  const [reading, setReading] = useState<'help' | Ruleset | null>(null);
 
   // Only games with a scoreboard have anything to say about match length.
   const chosen = OFFERED_RULESETS.find((ruleset) => ruleset.id === rulesetId);
@@ -44,7 +47,12 @@ export function Lobby({
   return (
     <div className="lobby">
       <div className="lobby__card">
-        <h1>पत्ते</h1>
+        <div className="lobby__head">
+          <h1>पत्ते</h1>
+          <button className="lobby__help" onClick={() => setReading('help')}>
+            Help
+          </button>
+        </div>
         <p>A deck, a table, and whoever you send the link to.</p>
 
         <label>
@@ -55,22 +63,36 @@ export function Lobby({
         <fieldset className="games">
           <legend>Game</legend>
           {OFFERED_RULESETS.map((ruleset) => (
-            <label key={ruleset.id} className={rulesetId === ruleset.id ? 'is-chosen' : ''}>
-              <input
-                type="radio"
-                name="ruleset"
-                value={ruleset.id}
-                checked={rulesetId === ruleset.id}
-                onChange={() => setRulesetId(ruleset.id)}
-              />
-              <span className="games__name">{ruleset.name}</span>
-              <span className="games__blurb">{ruleset.blurb}</span>
-              {ruleset.minPlayers > 1 && (
-                <span className="games__count">
-                  {ruleset.minPlayers}–{ruleset.maxPlayers} players
-                </span>
-              )}
-            </label>
+            // The question mark sits beside the label rather than inside it:
+            // a button within a label is still a click on the label, so it
+            // would pick the game as well as explain it.
+            <div key={ruleset.id} className="games__row">
+              <label className={rulesetId === ruleset.id ? 'is-chosen' : ''}>
+                <input
+                  type="radio"
+                  name="ruleset"
+                  value={ruleset.id}
+                  checked={rulesetId === ruleset.id}
+                  onChange={() => setRulesetId(ruleset.id)}
+                />
+                <span className="games__name">{ruleset.name}</span>
+                <span className="games__blurb">{ruleset.blurb}</span>
+                {ruleset.minPlayers > 1 && (
+                  <span className="games__count">
+                    {ruleset.minPlayers}–{ruleset.maxPlayers} players
+                  </span>
+                )}
+              </label>
+              <button
+                type="button"
+                className="games__rules"
+                title={`How to play ${ruleset.name}`}
+                aria-label={`How to play ${ruleset.name}`}
+                onClick={() => setReading(ruleset)}
+              >
+                ?
+              </button>
+            </div>
           ))}
         </fieldset>
 
@@ -119,6 +141,11 @@ export function Lobby({
           <button type="submit">Join</button>
         </form>
       </div>
+
+      {reading === 'help' && <HelpPanel onClose={() => setReading(null)} />}
+      {reading !== null && reading !== 'help' && (
+        <RulesPanel ruleset={reading} onClose={() => setReading(null)} />
+      )}
     </div>
   );
 }

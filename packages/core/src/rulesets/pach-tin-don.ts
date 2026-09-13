@@ -188,6 +188,18 @@ export const pachTinDon: Ruleset = {
   autoStart: false,
   scoreDirection: 'high',
   scoreNote: 'You score how far past your quota you got, and how far short if you missed it.',
+
+  howToPlay: {
+    goal: 'Take your quota of the ten tricks: five, three or two, depending on where you are sitting.',
+    rules: [
+      'Thirty cards, three players, ten tricks. The same pack as सात-आठ: nothing below a seven, and only the seven of hearts and the seven of spades.',
+      'Five cards are dealt to each of you. Trump is named. Only then are the other five dealt — so the call is made on half a hand, which is the whole difficulty of it.',
+      'The player to the dealer\'s right names trump, leads, and must take five. The dealer\'s left must take three. The dealer must take two.',
+      'Follow the suit that was led if you can. The highest trump takes the trick; with no trump in it, the highest card of the suit led. Whoever wins it leads the next one.',
+      'The quotas add up to ten exactly, so somebody beating theirs means somebody else missed. You score the difference either way, and it can be negative.',
+      'The deal passes on each round, so the five, the three and the two move round the table with it.',
+    ],
+  },
   // No passing: you always hold something you are allowed to play.
 
   announce(state: GameState, event: GameEvent, viewer: PlayerId): string | null {

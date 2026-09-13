@@ -194,8 +194,23 @@ function apply(state: GameState, event: GameEvent): void {
       // being waited on. Dropped rather than silently passed, so the asker
       // asks again and nobody is redealt without having agreed to it.
       state.redeal = null;
+      const wasOwner = state.players[event.playerId]?.isOwner ?? false;
       delete state.players[event.playerId];
       state.seatOrder = state.seatOrder.filter((id) => id !== event.playerId);
+
+      /*
+       * Ownership passes to whoever is left.
+       *
+       * `isOwner` is handed out once, to whoever sits down at an empty table,
+       * so an owner who leaves used to take the role with them and leave a
+       * table nobody could set the match length on, end, or ask for a redeal
+       * on -- permanently, since nothing hands it back while anyone is seated.
+       */
+      const heir = state.seatOrder[0];
+      if (wasOwner && heir !== undefined) {
+        const player = state.players[heir];
+        if (player) player.isOwner = true;
+      }
       // Someone who leaves mid-game stops taking turns, or the table waits
       // forever on a chair that is not coming back.
       const wasInPlay = state.inPlay.indexOf(event.playerId);

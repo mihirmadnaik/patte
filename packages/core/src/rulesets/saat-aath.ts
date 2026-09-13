@@ -173,6 +173,18 @@ export const saatAath: Ruleset = {
   autoStart: false,
   scoreDirection: 'high',
   scoreNote: 'You score how far past your quota you got. Highest total leads.',
+
+  howToPlay: {
+    goal: 'Take your quota of the fifteen tricks: eight if you called trump, seven if you dealt.',
+    rules: [
+      'Thirty cards: nothing below a seven, and only the seven of hearts and the seven of spades.',
+      'You hold five cards, and five stacks of two sit in front of you — a face-up card with an unknown one underneath. So fifteen cards are yours, but only ten are ever visible.',
+      'Whoever did not deal names trump, having seen only their five hand cards. Then the stack tops are turned up and they lead.',
+      'Follow the suit that was led if you can, from your hand or from the top of a stack. The highest trump takes the trick; with no trump in it, the highest card of the suit led.',
+      'Playing the top of a stack turns over the card beneath it, so what you have available changes as you go.',
+      'The quotas add up to fifteen exactly, so one of you beats yours by however much the other falls short. Seven each is a draw.',
+    ],
+  },
   // No passing: you always hold something you are allowed to play.
 
   /**

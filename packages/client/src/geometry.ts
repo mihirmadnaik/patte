@@ -30,6 +30,26 @@ export const ROW_EXPOSURE_ROOMY = 0.62;
 export const ROW_EXPOSURE_PHONE = 1;
 /** How wide the trick drop area is, in cards. */
 export const TRICK_WIDTH = 2.7;
+
+/**
+ * How far a card in the trick sits from the middle of the trick, towards the
+ * player who played it, as a fraction of a card's height.
+ *
+ * Shared by the placement, the box drawn under the trick and the fit model,
+ * because a trick sorted by seat is nearly twice as tall as one laid out in a
+ * row -- and the model used to budget exactly one card for it. Every layout
+ * bug in this file has come from a model that restated the placement instead
+ * of sharing it.
+ */
+export const TRICK_SPREAD_Y = 0.46;
+
+/** The box a trick actually occupies, once it is sorted by seat. */
+export function trickSize(m: Metrics): { width: number; height: number } {
+  return {
+    width: m.cardW * TRICK_WIDTH,
+    height: m.cardH * (1 + 2 * TRICK_SPREAD_Y),
+  };
+}
 /**
  * How large a card is allowed to be, once it is known what will fit.
  *
@@ -163,10 +183,10 @@ function heightNeeded(m: Metrics, family: LayoutFamily): number {
       return rowsTop(m) + rows + rowHandGap(m) + m.cardH * 1.45 + m.statusBand;
     }
     case 'trick':
-      // Name plates, then a trick a card tall, then the same gap and hand the
-      // rows layout uses. Opponents' hands are not drawn, so this is a roomy
-      // table and the cards stay at full size.
-      return rowsTop(m) + m.cardH + rowHandGap(m) + m.cardH * 1.45 + m.statusBand;
+      // Name plates, then the trick -- which is spread out towards the seats
+      // and so costs more than one card's height -- then the same gap and
+      // hand the rows layout uses.
+      return rowsTop(m) + trickSize(m).height + rowHandGap(m) + m.cardH * 1.45 + m.statusBand;
     case 'free':
       return m.cardH * 3 + m.fanLift;
   }
@@ -207,6 +227,8 @@ export interface Placement {
   rotate: number;
   /** Stacking order within the table. */
   z: number;
+  /** Drawn against the table's card size. Omitted means full size. */
+  scale?: number;
 }
 
 /**
@@ -377,6 +399,49 @@ export function trickBand(m: Metrics, height: number): number {
   const top = rowsTop(m);
   const bottom = handTop(m, height) - rowHandGap(m);
   return (top + Math.max(bottom, top + m.cardH)) / 2;
+}
+
+/** Where a card in the trick belongs: under whose plate, and which row. */
+export interface TrickSeat {
+  /** The middle of that player's column, in table pixels. */
+  x: number;
+  /** Yours sits below the middle of the trick; everybody else's above it. */
+  below: boolean;
+}
+
+/**
+ * A card in the trick, under the player who played it.
+ *
+ * A row of cards in play order says what was led and in what order, and says
+ * nothing at all about *whose* each one is -- which on a four-handed table is
+ * the question actually being asked.
+ *
+ * Deliberately not a ring of cards around the middle, which is how they would
+ * lie at a real table: this table does not seat people in a ring. Opponents
+ * are a strip of name plates along the top, in seating order, so a card goes
+ * directly under its own plate and yours goes below the trick, nearest you.
+ * The column *is* the answer -- the first thing you read is the name, and the
+ * card is beneath it. A ring on a phone put the left and right cards across
+ * the bottom one and buried the card you most wanted to find: your own.
+ */
+export function trickPlacement(
+  m: Metrics,
+  seat: TrickSeat,
+  origin: { x: number; y: number },
+  width: number,
+  index: number,
+): Placement {
+  const half = m.cardW / 2;
+  return {
+    // Clamped to the table: a plate near the edge is pulled inwards, and a
+    // card hanging half off the screen is worse than one slightly out of line.
+    x: Math.max(SIDE_MARGIN, Math.min(seat.x, width - SIDE_MARGIN - m.cardW + half) - half),
+    y: origin.y - m.cardH / 2 + (seat.below ? 1 : -1) * m.cardH * TRICK_SPREAD_Y,
+    rotate: 0,
+    // Play order still decides what overlaps what, so the card that just
+    // landed sits on top of the one before it.
+    z: index,
+  };
 }
 
 /**
@@ -552,10 +617,22 @@ export function placementsFor(
   origin: { x: number; y: number },
   cardPos: (cardId: string) => { x: number; y: number } | undefined,
   rank_: (cardId: string) => string | undefined = () => undefined,
+  /** Which column a card belongs in, for a trick sorted by seat. */
+  seatOf: (cardId: string) => TrickSeat | undefined = () => undefined,
 ): Map<string, Placement> {
   const out = new Map<string, Placement>();
 
   zone.cards.forEach((cardId, index) => {
+    if (zone.kind === 'trick') {
+      const seat = seatOf(cardId);
+      // Only when we know whose it is. A card nobody is recorded as having
+      // played falls back to the spread, rather than piling up at the centre.
+      if (seat !== undefined) {
+        out.set(cardId, trickPlacement(m, seat, origin, bounds.width, index));
+        return;
+      }
+    }
+
     if (zone.kind === 'stack') {
       out.set(cardId, pairedStackPlacement(m, index, zone.cards.length, origin));
       return;
@@ -596,6 +673,20 @@ export function placementsFor(
         out.set(cardId, stackPlacement(m, index, zone.cards.length, origin));
     }
   });
+
+  // A zone drawn small draws everything in it small, and the placement is
+  // worked out at full size first: the card is re-centred on where it would
+  // have sat, so shrinking it does not also move it.
+  if (zone.scale !== undefined && zone.scale !== 1) {
+    for (const [cardId, placement] of out) {
+      out.set(cardId, {
+        ...placement,
+        x: placement.x + (m.cardW * (1 - zone.scale)) / 2,
+        y: placement.y + (m.cardH * (1 - zone.scale)) / 2,
+        scale: zone.scale,
+      });
+    }
+  }
 
   return out;
 }

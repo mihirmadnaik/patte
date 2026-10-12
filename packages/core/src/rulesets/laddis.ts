@@ -1,9 +1,9 @@
 /**
- * लाडीस (Laddis) — four players, two sides, and one ledger between them.
+ * लॅडीस (Laddis) — four players, two sides, and one ledger between them.
  *
  * The first game here played in partnerships, and the first scored as a
  * running balance rather than a column of rounds. Both of those are the same
- * idea: nothing in लाडीस belongs to a player. Points are posted onto a *side*,
+ * idea: nothing in लॅडीस belongs to a player. Points are posted onto a *side*,
  * and the side carrying them is the side that deals.
  *
  * **The ledger is one signed number.** A result is posted onto the other side,
@@ -31,7 +31,7 @@
  * zone, never as a suit in `gameData`, because `gameData` is public: a trump
  * written there would be readable by every client on the table.
  *
- * **वाक्खाई (vakkhai).** On four cards a player may declare that they will
+ * **वख्खै (vakkhai).** On four cards a player may declare that they will
  * take on both opponents with their partner's cards taken off the table. Three
  * players, four tricks, no trump, and the declarer must win every one of them.
  * They name their own stake in eights; succeed and it is posted onto the other
@@ -486,6 +486,11 @@ function trumpZone(): Zone {
     sealed: true,
     cards: [],
     pos: { x: 0.14, y: 0.52 },
+    // Half size. Face down it is a token, not a card: it says "trump is still
+    // down" and there is nothing on it to read. At full size that one bit cost
+    // a phone a band of table, and when it finally does get turned up it is
+    // shown full size as an announcement rather than in this corner.
+    scale: 0.5,
     label: 'trump',
   };
 }
@@ -516,8 +521,8 @@ function outZone(): Zone {
 
 export const laddis: Ruleset = {
   id: 'laddis',
-  name: 'लाडीस',
-  blurb: 'Four players, two sides. Take your quota of the eight tricks — or declare वाक्खाई and play alone.',
+  name: 'लॅडीस',
+  blurb: 'Four players, two sides. Take your quota of the eight tricks — or declare वख्खै and play alone.',
   handOrder: { suits: HAND_SUITS, ranks: [...RANKING] },
   minPlayers: SEATS,
   maxPlayers: SEATS,
@@ -531,29 +536,38 @@ export const laddis: Ruleset = {
     goal: 'Keep the points on the other side of the book. Whoever is carrying them has to deal.',
     rules: [
       'Four players in fixed pairs, partners across the table. Thirty-two cards — ace down to seven, ace high.',
-      'Four cards each to start. Anybody may declare वाक्खाई on them; if nobody does, a trump is set and four more cards go out for a hand of eight tricks.',
+      'Four cards each to start. Anybody may declare वख्खै on them; if nobody does, a trump is set and four more cards go out for a hand of eight tricks.',
       'If everybody passes, the player to the dealer\'s right sets one of their own cards face down. Its suit is trump and they alone know it.',
       'Nothing is a trump until the card is turned up. Anybody who cannot follow suit may ask for it on their turn — and cards of that suit played earlier in the hand were never trumps.',
       'The dealers need four of the eight tricks; the other side needs five. Four and five out of eight means one side always gets there, so the hand ends the moment either does.',
       'The non-dealers getting there posts 5 onto the dealers. The dealers getting there posts 10 onto the non-dealers, settling against whatever they were carrying first.',
       'Whoever is carrying points deals. Land on nothing and the same side deals again; within a side the deal crosses to the partner every thirty-two points.',
-      'वाक्खाई is a hand taken on alone: your partner\'s cards are withdrawn, three of you play four tricks with no trump, and you must win every one. Name your stake in eights — win and it goes on them, lose and double goes on you.',
+      'वख्खै is a hand taken on alone: your partner\'s cards are withdrawn, three of you play four tricks with no trump, and you must win every one. Name your stake in eights — win and it goes on them, lose and double goes on you.',
     ],
   },
   // No passing: you always hold something you are allowed to play.
 
-  announce(state: GameState, event: GameEvent, viewer: PlayerId): string | null {
+  announce(
+    state: GameState,
+    event: GameEvent,
+    viewer: PlayerId,
+  ): string | { line: string; show?: CardId[] } | null {
     // The reveal, to everyone but whoever asked for it. Said on the moment the
     // suit becomes public rather than on the asking, so that what is announced
     // and what the table may know are the same event.
-    if (event.type === 'gameDataSet' && event.key === 'trump' && event.actor !== viewer) {
+    if (event.type === 'gameDataSet' && event.key === 'trump') {
       const trump = revealedTrump(state);
-      return trump ? `Trump is up — ${SUIT_LABEL[trump]}` : null;
+      if (!trump) return null;
+      // Said to the player who asked for it as well. Everybody else has been
+      // playing blind and this is the fact the rest of the hand turns on --
+      // and the asker has not seen the card either.
+      const card = textAt(state, 'trumpCard');
+      return { line: `Trump is up — ${SUIT_LABEL[trump]}`, ...(card ? { show: [card] } : {}) };
     }
 
     if (event.type === 'gameDataSet' && event.key === 'vakkhai' && event.value !== viewer) {
       const declarer = typeof event.value === 'string' ? event.value : null;
-      return `${nameOf(state, declarer)} has declared वाक्खाई for ${stakeOf(state)}`;
+      return `${nameOf(state, declarer)} has declared वख्खै for ${stakeOf(state)}`;
     }
 
     return null;
@@ -572,11 +586,11 @@ export const laddis: Ruleset = {
       prompt:
         standing > 0
           ? `${nameOf(state, held)} will take the hand on alone for ${standing}. Say more, or pass.`
-          : 'Four cards. Declare वाक्खाई to play this hand alone against both opponents — or pass, and let a trump be set.',
-      standing: standing > 0 ? `${nameOf(state, held)} — वाक्खाई for ${standing}` : null,
+          : 'Four cards. Declare वख्खै to play this hand alone against both opponents — or pass, and let a trump be set.',
+      standing: standing > 0 ? `${nameOf(state, held)} — वख्खै for ${standing}` : null,
       stakes: stakeLadder(standing),
       stakePrefix: STAKE_PREFIX,
-      declareLabel: 'Declare वाक्खाई',
+      declareLabel: 'Declare वख्खै',
       passOption: PASS_BID,
       passLabel: 'Pass',
     };
@@ -603,7 +617,7 @@ export const laddis: Ruleset = {
 
   standings(state: GameState): StandingsRow[] | null {
     // On screen from the moment the cards go out: somebody deciding whether to
-    // declare वाक्खाई is deciding it against these numbers.
+    // declare वख्खै is deciding it against these numbers.
     if (state.phase !== 'playing' || state.teams.length === 0) return null;
 
     const declarer = declarerOf(state);
@@ -1094,6 +1108,10 @@ function revealTrump(state: GameState): EventBody[] {
   return [
     { type: 'gameDataSet', key: 'revealTrick', value: tricksPlayed(state) },
     { type: 'gameDataSet', key: 'revealAt', value: trickCards(state).length },
+    // Which card it was. Written only now, when the suit becomes public
+    // anyway -- `gameData` is readable by every client, so naming the card
+    // while it was still face down would have given the whole thing away.
+    { type: 'gameDataSet', key: 'trumpCard', value: hidden },
     { type: 'gameDataSet', key: 'trump', value: suit },
     // Everybody has seen it, and goes on knowing which card it was: it is in
     // the caller's hand from here, and that it is there is part of the game.
@@ -1158,7 +1176,7 @@ function handResult(state: GameState): EventBody[] {
   /*
    * A round's score is what the hand did to each side's standing, signed.
    *
-   * The ledger is the only score लाडीस has, and the engine keeps per-round
+   * The ledger is the only score लॅडीस has, and the engine keeps per-round
    * numbers that the scoreboard adds up. Writing the change rather than the
    * posting is what makes those two the same thing: a side that was carrying
    * five and is handed the book back scores minus five, so the running total

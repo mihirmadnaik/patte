@@ -1,5 +1,5 @@
 /**
- * लाडीस.
+ * लॅडीस.
  *
  * Four things here are new to this engine, and all four are worth pinning:
  * sides rather than players, a ledger that settles rather than accumulates, a
@@ -484,7 +484,7 @@ describe('trumps played before the reveal', () => {
   });
 });
 
-describe('वाक्खाई', () => {
+describe('वख्खै', () => {
   function alone(seed = 1): { t: Table; declarer: PlayerId; partner: PlayerId } {
     const t = dealt(seed);
     const declarer = t.state.inPlay[0]!;
@@ -712,6 +712,100 @@ describe('the ledger', () => {
 
   it('runs open-ended, so nothing ever declares a last round', () => {
     expect(laddis.openEnded).toBe(true);
+  });
+});
+
+describe('who played what', () => {
+  it('records the player behind every card in the trick', () => {
+    const t = playing();
+    const played: PlayerId[] = [];
+    for (let i = 0; i < 3; i++) {
+      const actor = t.state.turn!;
+      played.push(actor);
+      const options = legal(t.state, actor);
+      const moved = t.submit(actor, { type: 'move', cardIds: [options[0]!], toZone: TRICK_ZONE });
+      if (!moved.ok) throw new Error(moved.reason);
+    }
+
+    const trick = t.state.zones[TRICK_ZONE]!.cards;
+    expect(trick).toHaveLength(3);
+    expect(trick.map((cardId) => t.state.playedBy[cardId])).toEqual(played);
+  });
+
+  it('forgets a card that goes back into a hand', () => {
+    // The trump returns to the caller's hand when it is turned up, and a card
+    // sitting in somebody's hand is nobody's play.
+    const t = playing();
+    const caller = t.state.inPlay[0]!;
+    const hidden = t.state.zones['trump']!.cards[0]!;
+    expect(t.state.playedBy[hidden]).toBe(caller);
+
+    const emptied = {
+      ...t.state,
+      zones: { ...t.state.zones, [`hand:${caller}`]: { ...t.state.zones[`hand:${caller}`]!, cards: [] } },
+    } as GameState;
+    for (const body of laddis.after(emptied, { type: 'turnSet', playerId: caller, seq: 9, at: 0, actor: caller })) {
+      t.commit(caller, [body]);
+    }
+
+    expect(t.state.zones[`hand:${caller}`]?.cards).toContain(hidden);
+    expect(t.state.playedBy[hidden]).toBeUndefined();
+  });
+
+  it('starts every deal with a clean slate', () => {
+    const t = playing();
+    playOut(t);
+    expect(Object.keys(t.state.playedBy).length).toBeGreaterThan(0);
+    expect(t.submit(PLAYERS[0]!, { type: 'startGame' }).ok).toBe(true);
+    expect(t.state.playedBy).toEqual({});
+  });
+});
+
+describe('turning the trump up', () => {
+  it('announces the suit and holds the card itself up', () => {
+    const t = playing();
+    const hidden = t.state.zones['trump']!.cards[0]!;
+    const suit = t.state.cards[hidden]!.face!.suit;
+
+    const revealed = {
+      ...t.state,
+      gameData: { ...t.state.gameData, trump: suit, trumpCard: hidden },
+    } as GameState;
+
+    const said = laddis.announce!(
+      revealed,
+      { type: 'gameDataSet', key: 'trump', value: suit, seq: 9, at: 0, actor: PLAYERS[1]! },
+      PLAYERS[0]!,
+    );
+
+    expect(said).toMatchObject({ show: [hidden] });
+    expect(typeof said === 'object' && said?.line).toContain('Trump is up');
+  });
+
+  it('tells the player who asked for it as well', () => {
+    // They have not seen the card either -- they only know it is down.
+    const t = playing();
+    const hidden = t.state.zones['trump']!.cards[0]!;
+    const suit = t.state.cards[hidden]!.face!.suit;
+    const asker = PLAYERS[1]!;
+    const revealed = {
+      ...t.state,
+      gameData: { ...t.state.gameData, trump: suit, trumpCard: hidden },
+    } as GameState;
+
+    expect(
+      laddis.announce!(
+        revealed,
+        { type: 'gameDataSet', key: 'trump', value: suit, seq: 9, at: 0, actor: asker },
+        asker,
+      ),
+    ).not.toBeNull();
+  });
+
+  it('keeps the card out of the public scratchpad while it is down', () => {
+    const t = playing();
+    expect(t.state.gameData['trumpCard']).toBeUndefined();
+    expect(t.state.gameData['trump']).toBeUndefined();
   });
 });
 

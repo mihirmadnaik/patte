@@ -194,6 +194,9 @@ html, body, #root {
   font-size: 11px;
   letter-spacing: 0.06em;
   opacity: 0.75;
+  /* A half-size slot is narrower than its own caption, and a label that wraps
+     under a card reads as two separate things. It overhangs instead. */
+  white-space: nowrap;
   /* Piles cast a heavy shadow on the felt right where their label sits. */
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
@@ -1499,10 +1502,30 @@ html, body, #root {
 .flash {
   position: fixed;
   inset: var(--toolbar-h, 56px) 0 0 0;
-  display: grid;
-  place-items: center;
+  /* A column: a card held up, with the words under it. Flex rather than a
+     grid because a grid's two auto rows stretch to fill the table and each
+     item centres in its own half -- which put the card near the top of the
+     screen and the line near the bottom, as two unrelated things. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
   z-index: 9700;
   pointer-events: none;
+}
+
+/* A card that is itself the announcement, held up at full size. */
+.flash__cards {
+  display: flex;
+  gap: 10px;
+  filter: drop-shadow(0 22px 48px rgba(0, 0, 0, 0.7));
+  animation: flash-card-in 260ms var(--ease) both;
+}
+
+@keyframes flash-card-in {
+  from { opacity: 0; transform: scale(0.7) rotate(-6deg); }
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
 }
 
 .flash__line {
@@ -1523,6 +1546,12 @@ html, body, #root {
   to { opacity: 1; transform: scale(1); }
 }
 
+/* The words follow the card rather than landing on top of it: there is a
+   beat to look at what was turned over before being told what it means. */
+.flash__line--after { animation: flash-in 180ms var(--ease) 420ms both; }
+
 @media (prefers-reduced-motion: reduce) {
-  .flash__line { animation: none; }
+  .flash__line,
+  .flash__line--after,
+  .flash__cards { animation: none; }
 }

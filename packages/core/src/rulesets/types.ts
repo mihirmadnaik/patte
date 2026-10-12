@@ -51,7 +51,7 @@ export interface StandingsRow {
   /**
    * Everyone this line speaks for, when the line is a side rather than a seat.
    *
-   * लाडीस is won by a partnership, so four players owe two quotas and a row
+   * लॅडीस is won by a partnership, so four players owe two quotas and a row
    * per player would be saying each number twice. `playerId` stays the seat
    * the row is keyed on; this is who it covers, and the strip names them all.
    */
@@ -112,7 +112,7 @@ export interface SetupSpec {
    * Sides, for a game played in partnerships.
    *
    * Omitted by every game where each player is on their own, which is all of
-   * them but लाडीस. The engine carries it and never acts on it.
+   * them but लॅडीस. The engine carries it and never acts on it.
    */
   teams?: PlayerId[][];
   /** Opening values for the ruleset's scratchpad -- stage, dealer, and such. */
@@ -142,7 +142,7 @@ export interface SetupContext {
    * Whether this deal starts a fresh match rather than continuing one.
    *
    * Only matters to a game that carries something of its own between rounds.
-   * लाडीस keeps a running ledger in `gameData`, and `previous` cannot be told
+   * लॅडीस keeps a running ledger in `gameData`, and `previous` cannot be told
    * apart from an ordinary next round -- the scores are cleared by the engine
    * but the scratchpad is the ruleset's, so the ruleset is the only thing that
    * can start it over.
@@ -260,7 +260,7 @@ export interface Ruleset {
   /**
    * Whether the game runs until people stop, rather than to a count of rounds.
    *
-   * लाडीस keeps a ledger: points move from side to side and whoever is
+   * लॅडीस keeps a ledger: points move from side to side and whoever is
    * carrying them deals, which is a thing with no last round in it. So the
    * match length stops being offered and nothing ever announces a winner.
    */
@@ -292,7 +292,7 @@ export interface Ruleset {
 
   /**
    * A bid the game is waiting for, and who owes it. Null when nobody is
-   * bidding, which for every game but लाडीस is always.
+   * bidding, which for every game but लॅडीस is always.
    */
   auction?(state: GameState): AuctionCall | null;
 
@@ -302,7 +302,7 @@ export interface Ruleset {
    * The pill otherwise says as little as it can get away with, on the grounds
    * that a lit-up hand and a lit-up pill already say "your turn" without
    * words. That reasoning fails when the game wants something it has no other
-   * way to express: लाडीस asks the player to its dealer's right to set a card
+   * way to express: लॅडीस asks the player to its dealer's right to set a card
    * aside as a trump nobody will see, and a hand of lit cards is not a way to
    * say that.
    *
@@ -357,8 +357,18 @@ export interface Ruleset {
    *
    * Returns null for events this ruleset has nothing to say about, which is
    * almost all of them.
+   *
+   * A line on its own for most things. `show` is for the handful where the
+   * fact *is* a card: लॅडीस turning up a trump that has been face down all
+   * hand, where naming the suit in words and leaving the card itself in a
+   * half-size corner is the wrong way round. Those cards are held up full
+   * size, and the line follows them.
    */
-  announce?(state: GameState, event: GameEvent, viewer: PlayerId): string | null;
+  announce?(
+    state: GameState,
+    event: GameEvent,
+    viewer: PlayerId,
+  ): string | { line: string; show?: CardId[] } | null;
 
   /**
    * What to announce when a round ends.

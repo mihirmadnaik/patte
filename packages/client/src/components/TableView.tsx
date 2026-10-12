@@ -24,6 +24,7 @@ import {
   trickBandMargin,
   seatLayout,
   topStripSeat,
+  trickSize,
   type LayoutFamily,
   type Metrics,
   type Placement,
@@ -219,7 +220,7 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
     // open hands those faces are the whole point, so they stay and fan
     // normally.
     //
-    // Every card, not any card. लाडीस turns one card of the caller's hand face
+    // Every card, not any card. लॅडीस turns one card of the caller's hand face
     // up -- the trump, once somebody has asked for it -- and on "any" that one
     // known card brought the whole fan of backs back onto the table, eating a
     // band of it to show four cards nobody can read.
@@ -239,6 +240,15 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
       origin,
       (cardId) => state.cards[cardId]?.pos,
       (cardId) => state.cards[cardId]?.face?.rank,
+      // Whose card it is, so the trick can put each one under its own player.
+      // The engine records who put it there; working it back out from the
+      // trick's length and the turn order would be reimplementing a rule.
+      (cardId) => {
+        const by = state.playedBy[cardId];
+        if (!by) return undefined;
+        if (by === you) return { x: bounds.width / 2, below: true };
+        return { x: seatOf(by).badge.x, below: false };
+      },
     );
 
     // A player's own hand sits above everything; other hands sit behind the
@@ -574,31 +584,40 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         );
       })}
 
+      {/* The band the trick occupies, which is the whole width of the table
+          once the cards are sorted into columns under the name plates. A box
+          drawn round the middle would no longer contain them -- and as the
+          drop target for a dragged card, the band is the honest answer
+          anyway. */}
       {measured && state.zones[TRICK_ZONE_ID] && (
         <div
           className="trick-slot"
           data-zone={TRICK_ZONE_ID}
           style={{
-            left: zoneOrigin(TRICK_ZONE_ID).x - m.cardW * 1.35,
-            top: zoneOrigin(TRICK_ZONE_ID).y - m.cardH * 0.75,
-            width: m.cardW * 2.7,
-            height: m.cardH * 1.5,
+            left: 12,
+            top: zoneOrigin(TRICK_ZONE_ID).y - trickSize(m).height / 2,
+            width: Math.max(bounds.width - 24, m.cardW),
+            height: trickSize(m).height,
           }}
         />
       )}
 
       {/* The face-down trump earns a box of its own: a single card back
-          sitting beside the table means nothing without a word on it. */}
+          sitting beside the table means nothing without a word on it. The box
+          follows the zone's own scale, so a half-size marker does not sit in a
+          full-size frame. */}
       {measured && ['deck', 'discard', 'trump'].map((zoneId) => {
         const zone = state.zones[zoneId];
         if (!zone) return null;
         const origin = zoneOrigin(zoneId);
+        const slotW = m.cardW * (zone.scale ?? 1);
+        const slotH = m.cardH * (zone.scale ?? 1);
         return (
           <div
             key={zoneId}
             className="slot"
             data-zone={zoneId}
-            style={{ left: origin.x - m.cardW / 2 - 8, top: origin.y - m.cardH / 2 - 8, width: m.cardW + 16, height: m.cardH + 16 }}
+            style={{ left: origin.x - slotW / 2 - 8, top: origin.y - slotH / 2 - 8, width: slotW + 16, height: slotH + 16 }}
           >
             <span className="slot__label">
               {zone.label} · {zone.cards.length}

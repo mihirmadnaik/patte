@@ -314,8 +314,9 @@ export class Connection {
       // Whatever the game itself wants said. Asked of the ruleset rather than
       // worked out here: which events matter, and how they read, is the
       // game's business, not the transport's.
-      const line = store.you ? ruleset.announce?.(state, event, store.you) : null;
-      if (line) store.declare(line);
+      const said = store.you ? ruleset.announce?.(state, event, store.you) : null;
+      if (typeof said === 'string') store.declare(said);
+      else if (said) store.declare(said.line, said.show);
     }
   }
 

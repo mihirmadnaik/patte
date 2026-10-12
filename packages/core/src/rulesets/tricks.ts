@@ -65,7 +65,7 @@ function rankOrder(rank: Rank): number {
  * trumps.
  *
  * Separated from `beats` because trumpiness is not always a property of the
- * card: in लाडीस the trump suit is face down for part of the hand, and a card
+ * card: in लॅडीस the trump suit is face down for part of the hand, and a card
  * of that suit played before it was turned up was never a trump. So whether
  * something is a trump can depend on *when* it was played, and the comparison
  * has to be able to be told rather than work it out.
@@ -187,7 +187,7 @@ export function trickWinner(
    * Whether the card at this position in the trick counts as a trump.
    *
    * Defaults to the plain answer -- its suit is the trump suit -- which is
-   * what both thirty-card games want. लाडीस passes its own, because a hand
+   * what both thirty-card games want. लॅडीस passes its own, because a hand
    * there can start with no trump at all and acquire one partway through.
    */
   isTrump?: (cardId: CardId, index: number) => boolean,

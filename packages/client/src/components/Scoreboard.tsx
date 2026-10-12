@@ -7,7 +7,7 @@
  * than leaving people to infer.
  *
  * A game played in partnerships gets a column per side rather than per player.
- * Partners always score the same number in लाडीस, because what is scored is
+ * Partners always score the same number in लॅडीस, because what is scored is
  * the side's standing, so four columns would be two pairs of identical ones.
  */
 

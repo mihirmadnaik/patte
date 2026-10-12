@@ -296,7 +296,7 @@ export function StatusBar({
   const inline = ruleset.inlineChoice?.(state, you) ?? null;
   const chooser = ruleset.awaitingChoice?.(state) ?? null;
   // Something the table is asking for that a lit-up hand cannot express on
-  // its own -- लाडीस asking for a card to be set aside, face down, as trump.
+  // its own -- लॅडीस asking for a card to be set aside, face down, as trump.
   const asked = ruleset.instruction?.(state, you) ?? null;
   // Everyone else's count is on their name plate; yours was the one number on
   // the table you had to work out by counting. In Sevens that matters -- being
@@ -388,7 +388,7 @@ export function StatusBar({
 /**
  * Whether a standings row speaks for this player.
  *
- * A row is a seat in most games and a side in लाडीस, so "is this mine?" is
+ * A row is a seat in most games and a side in लॅडीस, so "is this mine?" is
  * not simply an id comparison any more.
  */
 function rowCovers(row: StandingsRow, playerId: PlayerId): boolean {

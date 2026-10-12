@@ -71,17 +71,25 @@ export function CardView(props: CardViewProps): React.JSX.Element {
   if (peeking) classes.push('is-peeking');
   if (red) classes.push('is-red');
 
+  // A zone may ask for its cards small -- a face-down marker rather than a
+  // card you read. Width and height are scaled rather than a CSS transform so
+  // that the border radius, the shadow and the pointer target all shrink with
+  // it, and the `em` sizing below carries the printing down with them.
+  const scale = props.placement?.scale ?? 1;
+  const cardW = props.m.cardW * scale;
+  const cardH = props.m.cardH * scale;
+
   return (
     <div
       className={classes.join(' ')}
       data-card={props.cardId}
       style={{
-        width: props.m.cardW,
-        height: props.m.cardH,
+        width: cardW,
+        height: cardH,
         // Everything printed on the card is sized in `em`, so the rank, suit
         // and pip shrink with it. A fixed 13px index on a 54px card crowds the
         // corner it is supposed to sit in.
-        fontSize: (props.m.cardW * 13) / 76,
+        fontSize: (cardW * 13) / 76,
         // Set here rather than in the stylesheet so that the one thing which
         // has to land on a turned card -- the play button -- can read the same
         // pivot and turn about it.

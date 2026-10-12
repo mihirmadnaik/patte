@@ -51,6 +51,14 @@ interface Store {
    * is played against. It gets the middle of the screen for a moment.
    */
   flash: string | null;
+  /**
+   * Cards the announcement is holding up, full size, while it shows.
+   *
+   * For the handful of announcements where the fact *is* a card rather than a
+   * sentence about one -- a trump that has been face down all hand being
+   * turned over.
+   */
+  flashCards: CardId[];
   toasts: Toast[];
 
   setStatus(status: Status, message?: string): void;
@@ -64,7 +72,7 @@ interface Store {
   toggleSelected(cardId: CardId): void;
   clearSelection(): void;
   toggleHandSorted(): void;
-  declare(text: string): void;
+  declare(text: string, cards?: CardId[]): void;
   /** Forget this table entirely, on the way back to the lobby. */
   reset(): void;
   toast(text: string, kind?: Toast['kind']): void;
@@ -84,6 +92,7 @@ export const useStore = create<Store>((set, get) => ({
   selection: [],
   handSorted: false,
   flash: null,
+  flashCards: [],
   toasts: [],
 
   setStatus(status, message) {
@@ -161,12 +170,12 @@ export const useStore = create<Store>((set, get) => ({
     set({ handSorted: !get().handSorted });
   },
 
-  declare(text) {
-    set({ flash: text });
+  declare(text, cards) {
+    set({ flash: text, flashCards: cards ?? [] });
     setTimeout(() => {
       // Only clear our own announcement: a second one arriving in the meantime
       // is the current one, and cancelling it would blank the screen early.
-      if (get().flash === text) set({ flash: null });
+      if (get().flash === text) set({ flash: null, flashCards: [] });
     }, FLASH_MS);
   },
 
@@ -190,6 +199,7 @@ export const useStore = create<Store>((set, get) => ({
       peeked: {},
       selection: [],
       flash: null,
+      flashCards: [],
     });
   },
 

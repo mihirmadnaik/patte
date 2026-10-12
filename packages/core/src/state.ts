@@ -78,6 +78,16 @@ export interface Zone {
   cards: CardId[];
   /** Where the zone sits on the table surface, for rendering. */
   pos?: Point;
+  /**
+   * How big the cards here are drawn, against the table's own card size.
+   *
+   * Purely presentational, like `layout` and `pos`. For a zone holding a card
+   * that is a *token* rather than a card you read -- लॅडीस keeps its trump
+   * face down beside the table, where it is a marker saying "trump is still
+   * down" and nothing more. Drawn full size it costs a phone a band of table
+   * to say one bit.
+   */
+  scale?: number;
   label?: string;
 }
 
@@ -195,6 +205,21 @@ export interface GameState {
   redeal: RedealProposal | null;
   /** Finishing order once the game is over. First out is first here. */
   rankings: PlayerId[];
+
+  /**
+   * Who put each card where it now sits, for every card outside a hand.
+   *
+   * The engine knows this already -- every move carries its actor -- and used
+   * to throw it away, which left "who played that?" answerable only by
+   * redoing the ruleset's own arithmetic in the UI: a trick holds one card per
+   * player from the leader onwards, so you can count back from whoever played
+   * last. That is a rule, and a rule reimplemented in the client is worse than
+   * one the client cannot see.
+   *
+   * A card returning to a hand is dropped from this: it is nobody's play any
+   * more, which is what the trump coming back out of लॅडीस's trump zone is.
+   */
+  playedBy: Record<CardId, PlayerId>;
 
   /**
    * A scratchpad the current ruleset owns and the engine only carries.

@@ -40,6 +40,7 @@ export function emptyState(roomId: string): GameState {
     phase: 'lobby',
     inPlay: [],
     rankings: [],
+    playedBy: {},
     match: { rounds: 1, played: [] },
     lastPlay: null,
     redeal: null,
@@ -79,6 +80,7 @@ function apply(state: GameState, event: GameEvent): void {
       state.phase = 'playing';
       state.rankings = [];
       state.lastPlay = null;
+      state.playedBy = {};
       // A fresh deal starts with a blank scratchpad; last round's trump suit
       // has no business surviving into this one.
       state.gameData = {};
@@ -161,6 +163,7 @@ function apply(state: GameState, event: GameEvent): void {
       state.rankings = [];
       state.phase = 'lobby';
       state.lastPlay = null;
+      state.playedBy = {};
       state.gameData = {};
       for (const zone of event.zones) state.zones[zone.id] = structuredClone(zone);
       for (const card of event.cards) {
@@ -277,6 +280,11 @@ function apply(state: GameState, event: GameEvent): void {
         // Leaving a zone drops targeted reveals: a card returned to the deck
         // is secret again to anyone who was merely shown it.
         if (target.kind === 'deck') card.revealedTo = [];
+
+        // Who put it there. A card going into a hand is nobody's play -- it is
+        // being dealt, tidied, or taken back -- so it stops having one.
+        if (target.kind === 'hand') delete state.playedBy[card.id];
+        else if (event.actor !== null) state.playedBy[card.id] = event.actor;
       }
 
       // Remember what was just put down in public. A card going into a hand

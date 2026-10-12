@@ -41,13 +41,50 @@ export interface HowToPlay {
   rules: string[];
 }
 
-/** One player's line in the strip kept on screen during a hand. */
+/** One line in the strip kept on screen during a hand. */
 export interface StandingsRow {
   playerId: PlayerId;
   won: number;
   quota: number;
   /** A word about this seat, if the game has one -- 7-8 marks the dealer. */
   note?: string;
+  /**
+   * Everyone this line speaks for, when the line is a side rather than a seat.
+   *
+   * लाडीस is won by a partnership, so four players owe two quotas and a row
+   * per player would be saying each number twice. `playerId` stays the seat
+   * the row is keyed on; this is who it covers, and the strip names them all.
+   */
+  team?: PlayerId[];
+}
+
+/**
+ * Bidding, as a question put to one player at a time.
+ *
+ * Distinct from `trumpCall` and `awaitingChoice`, which each ask *one* player
+ * *one* question and are done. An auction travels: it comes round the table,
+ * and what a player may say depends on what has been said already. So the
+ * ruleset publishes whose turn it is to speak, what is standing, and the
+ * stakes still open to them -- and the client renders that without knowing
+ * what any of it means.
+ */
+export interface AuctionCall {
+  /** Who must speak now. */
+  bidder: PlayerId;
+  /** What the panel says to whoever is speaking. */
+  prompt: string;
+  /** The declaration standing against them, in the ruleset's own words. */
+  standing: string | null;
+  /** The stakes this player may declare, lowest first. Empty means pass only. */
+  stakes: number[];
+  /** A stake is sent as `choose` with this prefix and the number. */
+  stakePrefix: string;
+  /** The word on the declaring button. */
+  declareLabel: string;
+  /** The option to send for saying nothing. */
+  passOption: string;
+  /** The word on the pass button. */
+  passLabel: string;
 }
 
 /** Suits left to right, and ranks within a suit left to right. */
@@ -71,6 +108,13 @@ export interface SetupSpec {
    * the order is the game rather than an accident of who joined first.
    */
   inPlay?: PlayerId[];
+  /**
+   * Sides, for a game played in partnerships.
+   *
+   * Omitted by every game where each player is on their own, which is all of
+   * them but लाडीस. The engine carries it and never acts on it.
+   */
+  teams?: PlayerId[][];
   /** Opening values for the ruleset's scratchpad -- stage, dealer, and such. */
   gameData?: Record<string, string | number | boolean>;
 }
@@ -94,6 +138,16 @@ export interface SetupContext {
    * and 7-8 handed the trump call straight back to the player who just had it.
    */
   previous: Readonly<Record<string, string | number | boolean>>;
+  /**
+   * Whether this deal starts a fresh match rather than continuing one.
+   *
+   * Only matters to a game that carries something of its own between rounds.
+   * लाडीस keeps a running ledger in `gameData`, and `previous` cannot be told
+   * apart from an ordinary next round -- the scores are cleared by the engine
+   * but the scratchpad is the ruleset's, so the ruleset is the only thing that
+   * can start it over.
+   */
+  reset: boolean;
 }
 
 export interface Score {
@@ -203,6 +257,15 @@ export interface Ruleset {
   /** One line under the scoreboard explaining what the numbers are. */
   scoreNote: string;
 
+  /**
+   * Whether the game runs until people stop, rather than to a count of rounds.
+   *
+   * लाडीस keeps a ledger: points move from side to side and whoever is
+   * carrying them deals, which is a thing with no last round in it. So the
+   * match length stops being offered and nothing ever announces a winner.
+   */
+  openEnded?: boolean;
+
   /** The rules, for the help panel. */
   howToPlay?: HowToPlay;
 
@@ -226,6 +289,27 @@ export interface Ruleset {
    * every quota already.
    */
   trumpCall?(state: GameState): { chooser: PlayerId; prompt: string } | null;
+
+  /**
+   * A bid the game is waiting for, and who owes it. Null when nobody is
+   * bidding, which for every game but लाडीस is always.
+   */
+  auction?(state: GameState): AuctionCall | null;
+
+  /**
+   * A line telling one player what is being asked of them, for the status pill.
+   *
+   * The pill otherwise says as little as it can get away with, on the grounds
+   * that a lit-up hand and a lit-up pill already say "your turn" without
+   * words. That reasoning fails when the game wants something it has no other
+   * way to express: लाडीस asks the player to its dealer's right to set a card
+   * aside as a trump nobody will see, and a hand of lit cards is not a way to
+   * say that.
+   *
+   * Takes the viewer because what the table is waiting for is worth saying to
+   * everybody, in different words.
+   */
+  instruction?(state: GameState, playerId: PlayerId): string | null;
 
   /**
    * Where everyone stands against their quota, for the strip kept on screen.
@@ -252,8 +336,16 @@ export interface Ruleset {
    * Returns the button for `playerId` when it is theirs to press. Naming trump
    * is a real choice and gets a panel; picking up a trick you have already won
    * is an acknowledgement and gets a button.
+   *
+   * `note` is why the button is there, in the ruleset's words. The client used
+   * to supply that sentence itself and could only ever have one -- it said
+   * "you won that trick" beside whatever button it was given, which stopped
+   * being true the moment a game had a second thing to offer inline.
    */
-  inlineChoice?(state: GameState, playerId: PlayerId): { label: string; option: string } | null;
+  inlineChoice?(
+    state: GameState,
+    playerId: PlayerId,
+  ): { label: string; option: string; note?: string } | null;
 
   /**
    * Something worth saying out loud to one player, as it happens.

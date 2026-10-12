@@ -9,8 +9,10 @@
 import {
   getRuleset,
   trumpOf,
+  type AuctionCall,
   type GameState,
   type PlayerId,
+  type StandingsRow,
   type Suit,
 } from '@patte/core';
 import { useState } from 'react';
@@ -61,6 +63,9 @@ export function GamePanel({
 
   // A game can pause mid-deal for a decision: both trick games do, and a third
   // would too. Which game it is, and what it says, is the ruleset's to answer.
+  const bidding = ruleset.auction?.(state) ?? null;
+  if (bidding) return <Auction state={state} you={you} net={net} call={bidding} />;
+
   const call = ruleset.trumpCall?.(state) ?? null;
   if (call) return <TrumpCall state={state} you={you} net={net} call={call} />;
 
@@ -71,7 +76,9 @@ export function GamePanel({
   const isOwner = state.players[you]?.isOwner ?? false;
   const name = (id: PlayerId): string => state.players[id]?.name ?? 'Player';
   const played = state.match.played.length;
-  const matchOver = played >= state.match.rounds;
+  // A game that runs on a ledger has no last round to reach, so nothing is
+  // ever over and no scoreboard ever crowns anybody.
+  const matchOver = !ruleset.openEnded && played >= state.match.rounds;
 
   if (state.phase === 'lobby') {
     return (
@@ -91,7 +98,7 @@ export function GamePanel({
             ))}
           </ul>
 
-          {isOwner && (
+          {isOwner && !ruleset.openEnded && (
             <label className="rounds">
               Rounds to play
               <span className="rounds__stepper">
@@ -125,9 +132,11 @@ export function GamePanel({
           </button>
 
           <p className="panel__hint">
-            {enough
-              ? `Best of ${state.match.rounds} — the whole deck is dealt out each round.`
-              : `Needs ${ruleset.minPlayers}–${ruleset.maxPlayers} players. ${seated} here — share the code above.`}
+            {!enough
+              ? `Needs ${ruleset.minPlayers}–${ruleset.maxPlayers} players. ${seated} here — share the code above.`
+              : ruleset.openEnded
+                ? 'Hands run on until you stop. The score is a ledger, and whoever is carrying it deals.'
+                : `Best of ${state.match.rounds} — the whole deck is dealt out each round.`}
           </p>
         </div>
       </div>
@@ -153,7 +162,9 @@ export function GamePanel({
           <p>
             {matchOver
               ? `${played} round${played === 1 ? '' : 's'} played.`
-              : `Round ${played} of ${state.match.rounds}.`}
+              : ruleset.openEnded
+                ? `${played} hand${played === 1 ? '' : 's'} played.`
+                : `Round ${played} of ${state.match.rounds}.`}
           </p>
 
           <Scoreboard state={state} you={you} />
@@ -162,12 +173,12 @@ export function GamePanel({
             className="primary"
             onClick={() => net.submit({ type: 'startGame', ...(matchOver ? { reset: true } : {}) })}
           >
-            {matchOver ? 'New match' : `Deal round ${played + 1}`}
+            {matchOver ? 'New match' : ruleset.openEnded ? 'Deal the next hand' : `Deal round ${played + 1}`}
           </button>
 
           {!matchOver && isOwner && (
             <button className="ghost" onClick={() => net.submit({ type: 'endMatch' })}>
-              End the match here
+              {ruleset.openEnded ? 'Stop here and start over' : 'End the match here'}
             </button>
           )}
         </div>
@@ -284,6 +295,9 @@ export function StatusBar({
   const name = (id: PlayerId): string => state.players[id]?.name ?? 'Player';
   const inline = ruleset.inlineChoice?.(state, you) ?? null;
   const chooser = ruleset.awaitingChoice?.(state) ?? null;
+  // Something the table is asking for that a lit-up hand cannot express on
+  // its own -- लाडीस asking for a card to be set aside, face down, as trump.
+  const asked = ruleset.instruction?.(state, you) ?? null;
   // Everyone else's count is on their name plate; yours was the one number on
   // the table you had to work out by counting. In Sevens that matters -- being
   // out of cards is how you win, so how close you are is the score.
@@ -299,7 +313,7 @@ export function StatusBar({
   if (!inline && chooser && chooser !== you) {
     return (
       <div className={shell(false)}>
-        <span className="statusbar__text">Waiting for {name(chooser)}</span>
+        <span className="statusbar__text">{asked ?? `Waiting for ${name(chooser)}`}</span>
         {cards}
       </div>
     );
@@ -308,7 +322,9 @@ export function StatusBar({
   if (inline) {
     return (
       <div className={shell(true)}>
-        <span className="statusbar__text">You won that trick</span>
+        {/* Why the button is there is the ruleset's to say: the pill used to
+            assert "you won that trick" beside whatever it was handed. */}
+        {inline.note && <span className="statusbar__text">{inline.note}</span>}
         {cards}
         <button
           className="statusbar__act"
@@ -347,7 +363,11 @@ export function StatusBar({
    */
   return (
     <div className={shell(myTurn)}>
-      {!myTurn && <span className="statusbar__text">Waiting for {name(state.turn ?? '')}</span>}
+      {asked ? (
+        <span className="statusbar__text">{asked}</span>
+      ) : (
+        !myTurn && <span className="statusbar__text">Waiting for {name(state.turn ?? '')}</span>
+      )}
       {cards}
       {stuck && pass && (
         <button
@@ -363,6 +383,27 @@ export function StatusBar({
       )}
     </div>
   );
+}
+
+/**
+ * Whether a standings row speaks for this player.
+ *
+ * A row is a seat in most games and a side in लाडीस, so "is this mine?" is
+ * not simply an id comparison any more.
+ */
+function rowCovers(row: StandingsRow, playerId: PlayerId): boolean {
+  return row.team ? row.team.includes(playerId) : row.playerId === playerId;
+}
+
+/** Who a standings row is, in words, from the reader's point of view. */
+function rowNames(state: GameState, row: StandingsRow, you: PlayerId): string {
+  const name = (id: PlayerId): string => (id === you ? 'You' : (state.players[id]?.name ?? 'Player'));
+  if (!row.team) return name(row.playerId);
+  if (row.team.length === 0) return 'Nobody';
+  // Your own side reads as "you and whoever", never as your own name.
+  const mine = row.team.includes(you);
+  const others = row.team.filter((id) => id !== you);
+  return mine ? ['You', ...others.map(name)].join(' & ') : row.team.map(name).join(' & ');
 }
 
 const SUIT_NAMES: Record<Suit, string> = { S: 'Spades', H: 'Hearts', D: 'Diamonds', C: 'Clubs' };
@@ -389,7 +430,7 @@ function TrumpCall({
   // What you owe is not this component's to know: the ruleset publishes every
   // quota, and the totals fall out of them.
   const rows = getRuleset(state.rulesetId).standings?.(state) ?? null;
-  const mine_ = rows?.find((row) => row.playerId === you);
+  const mine_ = rows?.find((row) => rowCovers(row, you));
   const tricks = rows?.reduce((total, row) => total + row.quota, 0) ?? 0;
 
   return (
@@ -428,6 +469,104 @@ function TrumpCall({
 }
 
 /**
+ * The bidding, as it comes round the table.
+ *
+ * Like the trump call, everybody sees the same panel and only whoever is
+ * speaking gets buttons -- and like it, this knows nothing about the game. The
+ * standing call, the word on the button and every stake on offer come from the
+ * ruleset; all this does is put a stepper on the numbers and send back a
+ * `choose`. Which is why it is a stepper rather than a row of named rungs: how
+ * many stakes there are, and what they are worth, is not the client's to know.
+ */
+function Auction({
+  state,
+  you,
+  net,
+  call,
+}: {
+  state: GameState;
+  you: PlayerId;
+  net: Connection;
+  call: AuctionCall;
+}): React.JSX.Element {
+  const mine = call.bidder === you;
+  const [at, setAt] = useState(0);
+  // The ladder shortens as the bidding rises, so an index held from a previous
+  // turn can point past the end of it.
+  const stakes = call.stakes;
+  const index = Math.min(at, Math.max(stakes.length - 1, 0));
+  const stake = stakes[index];
+
+  const rows = getRuleset(state.rulesetId).standings?.(state) ?? null;
+  const yours = rows?.find((row) => rowCovers(row, you));
+
+  return (
+    <div className="panel panel--soft">
+      <div className="panel__card">
+        <h2>{mine ? 'Your call' : 'Bidding'}</h2>
+        <p>
+          {mine
+            ? call.prompt
+            : `${state.players[call.bidder]?.name ?? 'Another player'} is deciding whether to declare.`}
+        </p>
+
+        {call.standing && <p className="panel__note">Standing: {call.standing}</p>}
+
+        {mine && (
+          <>
+            {stake !== undefined && (
+              <label className="rounds auction__stake">
+                Stake
+                <span className="rounds__stepper">
+                  <button onClick={() => setAt(Math.max(0, index - 1))} aria-label="a smaller stake">
+                    −
+                  </button>
+                  <output>{stake}</output>
+                  <button
+                    onClick={() => setAt(Math.min(stakes.length - 1, index + 1))}
+                    aria-label="a larger stake"
+                  >
+                    +
+                  </button>
+                </span>
+              </label>
+            )}
+
+            <div className="panel__actions">
+              {stake !== undefined && (
+                <button
+                  className="primary"
+                  onClick={() => {
+                    net.submit({ type: 'choose', option: `${call.stakePrefix}${stake}` });
+                    sounds.slide();
+                  }}
+                >
+                  {call.declareLabel} · {stake}
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  net.submit({ type: 'choose', option: call.passOption });
+                  sounds.pickup();
+                }}
+              >
+                {call.passLabel}
+              </button>
+            </div>
+          </>
+        )}
+
+        {yours && (
+          <p className="panel__hint">
+            Pass, and your side must take {yours.quota} of the tricks.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
  * What is at stake, kept on screen throughout.
  *
  * In 7-8 the two facts that decide everything -- what is trump and how close
@@ -443,7 +582,6 @@ export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }):
   // lives in the ruleset's scratchpad and tricks won are just the size of a
   // pile.
   const trump = trumpOf(state);
-  const name = (id: PlayerId): string => (id === you ? 'You' : (state.players[id]?.name ?? 'Player'));
 
   return (
     <div className="trumpstrip">
@@ -457,10 +595,12 @@ export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }):
       {rows.map((row) => (
         <span
           key={row.playerId}
-          className={`trumpstrip__player${row.won >= row.quota ? ' is-met' : ''}`}
+          className={`trumpstrip__player${row.won >= row.quota ? ' is-met' : ''}${
+            rowCovers(row, you) ? ' is-yours' : ''
+          }`}
         >
           <em>
-            {name(row.playerId)}
+            {rowNames(state, row, you)}
             {row.note ? ` (${row.note})` : ''}
           </em>
           {row.won}<i>/{row.quota}</i>

@@ -120,6 +120,8 @@ export type EventBody =
       options: TableOptions;
       inPlay: PlayerId[];
       firstTurn: PlayerId | null;
+      /** Sides, for a game with partnerships. Empty for every other game. */
+      teams: PlayerId[][];
     }
   | { type: 'gameEnded'; rankings: PlayerId[]; scores: Record<PlayerId, number> }
   | { type: 'redealProposed'; by: PlayerId; waitingOn: PlayerId[]; reset: boolean }

@@ -34,6 +34,7 @@ import {
   DROPPED_SEVENS,
   HAND_SUITS,
   SHORT_PACK_RANKING as RANKING,
+  STOCK_ZONE,
   SUIT_LABEL,
   TAKE,
   TRICK_ZONE,
@@ -43,6 +44,7 @@ import {
   pileTricks,
   pileZone,
   stageOf,
+  stockZone,
   suitLed,
   trickCards,
   trickWinner,
@@ -77,9 +79,6 @@ const LATER_BATCHES = [3, 2] as const;
  * turn order, so a player's quota is just where they sit in it.
  */
 const QUOTAS = [5, 3, 2] as const;
-
-/** Where the undealt half of the pack waits for the trump call. */
-const STOCK_ZONE: ZoneId = 'stock';
 
 // --- reading the table -----------------------------------------------------
 //
@@ -161,22 +160,6 @@ function legalCards(state: GameState, playerId: PlayerId): CardId[] {
 
 // --- setup -----------------------------------------------------------------
 
-function stockZone(): Zone {
-  return {
-    id: STOCK_ZONE,
-    kind: 'deck',
-    owner: null,
-    layout: 'stack',
-    // Nobody sees these, including the player they are destined for. They are
-    // the half of the deal the trump call has to be made without.
-    faceDownVisibleTo: 'none',
-    openToOthers: false,
-    cards: [],
-    pos: { x: 0.5, y: 0.4 },
-    label: 'to deal',
-  };
-}
-
 export const pachTinDon: Ruleset = {
   id: 'pach-tin-don',
   name: 'पाच-तीन-दोन',
@@ -233,9 +216,12 @@ export const pachTinDon: Ruleset = {
     }));
   },
 
-  inlineChoice(state: GameState, playerId: PlayerId): { label: string; option: string } | null {
+  inlineChoice(
+    state: GameState,
+    playerId: PlayerId,
+  ): { label: string; option: string; note?: string } | null {
     return awaitingCollection(state, TRICK_SIZE) === playerId
-      ? { label: 'Take the trick', option: TAKE }
+      ? { label: 'Take the trick', option: TAKE, note: 'You won that trick' }
       : null;
   },
 

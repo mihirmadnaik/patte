@@ -76,10 +76,18 @@ export function Toolbar({
 
       <div className="toolbar__group">
         <span className="game-name">{ruleset.name}</span>
-        {!sandbox && state.match.rounds > 1 && state.phase !== 'lobby' && (
+        {/* "round 2 of 2" is a count towards an end. A game played to a
+            ledger has none -- the number would climb with every hand and the
+            denominator would climb with it, which says nothing at all. */}
+        {!sandbox && !ruleset.openEnded && state.match.rounds > 1 && state.phase !== 'lobby' && (
           <span className="round-count">
             round {Math.min(state.match.played.length + (state.phase === 'playing' ? 1 : 0), state.match.rounds)}
             /{state.match.rounds}
+          </span>
+        )}
+        {!sandbox && ruleset.openEnded && state.match.played.length > 0 && state.phase !== 'lobby' && (
+          <span className="round-count">
+            hand {state.match.played.length + (state.phase === 'playing' ? 1 : 0)}
           </span>
         )}
       </div>

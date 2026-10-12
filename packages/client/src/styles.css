@@ -232,6 +232,21 @@ html, body, #root {
 }
 .seat.is-away { opacity: 0.4; }
 
+/* Your partner, in a game with sides. Marked rather than placed: everybody
+   opposite you is drawn along the same strip, so across-the-table is not
+   something the screen can say by itself. */
+.seat.is-partner { background: rgba(0, 240, 205, 0.14); }
+.seat__partner {
+  display: block;
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--last-play);
+  opacity: 0.85;
+}
+
 /* --- cards -------------------------------------------------------------- */
 
 .card {
@@ -1075,6 +1090,13 @@ html, body, #root {
 .trumpstrip__trump.is-red { color: #ff8f80; }
 .trumpstrip__player i { font-style: normal; opacity: 0.45; }
 .trumpstrip__player.is-met { color: var(--accent); }
+/* Which of the two rows is yours, when a row is a side rather than a seat. */
+.trumpstrip__player.is-yours em { opacity: 0.8; }
+.trumpstrip__player.is-yours { font-weight: 600; }
+
+/* The stake stepper, which is the rounds stepper doing a second job. */
+.auction__stake { margin-top: 4px; }
+.auction__stake output { min-width: 2.4em; }
 
 /* --- status readout ------------------------------------------------------ */
 

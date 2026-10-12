@@ -69,7 +69,13 @@ export class Table {
     ];
 
     if (this.ruleset.autoStart) {
-      const setup = this.ruleset.setup({ players: [], rng: this.rng, match: this.state.match, previous: {} });
+      const setup = this.ruleset.setup({
+        players: [],
+        rng: this.rng,
+        match: this.state.match,
+        previous: {},
+        reset: false,
+      });
       bodies.push({
         type: 'gameStarted',
         zones: setup.zones,
@@ -77,6 +83,7 @@ export class Table {
         options: { ...DEFAULT_OPTIONS, ...setup.options },
         inPlay: [],
         firstTurn: setup.firstTurn ?? null,
+        teams: setup.teams ?? [],
       });
     }
 

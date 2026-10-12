@@ -157,6 +157,15 @@ export interface GameState {
   players: Record<PlayerId, Player>;
   /** Seating order around the table, clockwise. */
   seatOrder: PlayerId[];
+  /**
+   * Sides, for a game played in partnerships. Empty for every other game.
+   *
+   * Carried by the engine and read only by the ruleset that set it and by the
+   * screens that show a score. Everything else about a table is per-player --
+   * `scores`, `rankings`, `inPlay`, the turn -- and stays that way: a team is
+   * a fact about who a result belongs to, not about who acts.
+   */
+  teams: PlayerId[][];
   zones: Record<ZoneId, Zone>;
   cards: Record<CardId, Card>;
   turn: PlayerId | null;
@@ -260,6 +269,27 @@ export function getPlayer(state: GameState, id: PlayerId): Player {
   const player = state.players[id];
   if (!player) throw new Error(`unknown player: ${id}`);
   return player;
+}
+
+/**
+ * The side a player is on, as an index into `teams`, or -1 for a game without
+ * sides.
+ */
+export function teamOf(state: GameState, playerId: PlayerId): number {
+  return state.teams.findIndex((team) => team.includes(playerId));
+}
+
+/** Whether two players are on the same side. A game without sides has none. */
+export function sameTeam(state: GameState, a: PlayerId, b: PlayerId): boolean {
+  const side = teamOf(state, a);
+  return side >= 0 && side === teamOf(state, b);
+}
+
+/** Everyone on a player's side except the player. Empty without sides. */
+export function partnersOf(state: GameState, playerId: PlayerId): PlayerId[] {
+  const side = teamOf(state, playerId);
+  if (side < 0) return [];
+  return (state.teams[side] ?? []).filter((id) => id !== playerId);
 }
 
 /** The zone holding a player's hand, by convention `hand:<playerId>`. */

@@ -218,7 +218,18 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
     // A hand you *can* read is a different thing entirely: in a sandbox with
     // open hands those faces are the whole point, so they stay and fan
     // normally.
-    if (zone.kind === 'hand' && !isMine && !zone.cards.some((id) => state.cards[id]?.face)) continue;
+    //
+    // Every card, not any card. लाडीस turns one card of the caller's hand face
+    // up -- the trump, once somebody has asked for it -- and on "any" that one
+    // known card brought the whole fan of backs back onto the table, eating a
+    // band of it to show four cards nobody can read.
+    if (
+      zone.kind === 'hand' &&
+      !isMine &&
+      !(zone.cards.length > 0 && zone.cards.every((id) => state.cards[id]?.face))
+    ) {
+      continue;
+    }
     const origin = zoneOrigin(zone.id);
 
     const forZone = placementsFor(
@@ -576,7 +587,9 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         />
       )}
 
-      {measured && ['deck', 'discard'].map((zoneId) => {
+      {/* The face-down trump earns a box of its own: a single card back
+          sitting beside the table means nothing without a word on it. */}
+      {measured && ['deck', 'discard', 'trump'].map((zoneId) => {
         const zone = state.zones[zoneId];
         if (!zone) return null;
         const origin = zoneOrigin(zoneId);
@@ -600,13 +613,22 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         const { badge } = hasStacks
           ? { badge: { x: bounds.width / 2, y: rows.opponentName } }
           : seatOf(playerId);
+        // In a game with sides, which of three opponents is actually your
+        // partner is the first thing you need to know and the one thing the
+        // table cannot show -- everybody is drawn along the same strip.
+        const partner = state.teams.some((team) => team.includes(you) && team.includes(playerId));
         return (
           <div
             key={playerId}
-            className={`seat${state.turn === playerId ? ' is-turn' : ''}${player.connected ? '' : ' is-away'}`}
+            className={`seat${state.turn === playerId ? ' is-turn' : ''}${player.connected ? '' : ' is-away'}${
+              partner ? ' is-partner' : ''
+            }`}
             style={{ left: badge.x, top: badge.y }}
           >
-            <span className="seat__name">{player.name}</span>
+            <span className="seat__name">
+              {player.name}
+              {partner && <em className="seat__partner">partner</em>}
+            </span>
             <span className="seat__count">{state.zones[`hand:${playerId}`]?.cards.length ?? 0} cards</span>
           </div>
         );

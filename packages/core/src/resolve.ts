@@ -517,6 +517,7 @@ function dealEvents(state: GameState, deps: ResolveDeps, reset: boolean): EventB
     rng: deps.rng,
     match: state.match,
     previous: state.gameData,
+    reset,
   });
   const events: EventBody[] = [];
 
@@ -535,6 +536,7 @@ function dealEvents(state: GameState, deps: ResolveDeps, reset: boolean): EventB
     options: { ...state.options, ...setup.options },
     inPlay: setup.inPlay ?? players,
     firstTurn: setup.firstTurn ?? null,
+    teams: setup.teams ?? [],
   });
   // Opening scratchpad values land after the deal, since `gameStarted` wipes it.
   for (const [key, value] of Object.entries(setup.gameData ?? {})) {

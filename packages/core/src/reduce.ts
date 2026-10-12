@@ -30,6 +30,7 @@ export function emptyState(roomId: string): GameState {
     rulesetId: 'freeplay',
     players: {},
     seatOrder: [],
+    teams: [],
     zones: {},
     cards: {},
     turn: null,
@@ -73,6 +74,7 @@ function apply(state: GameState, event: GameEvent): void {
       }
       state.options = { ...event.options };
       state.inPlay = [...event.inPlay];
+      state.teams = event.teams.map((team) => [...team]);
       state.turn = event.firstTurn;
       state.phase = 'playing';
       state.rankings = [];
@@ -155,6 +157,7 @@ function apply(state: GameState, event: GameEvent): void {
       state.zones = {};
       state.cards = {};
       state.inPlay = [];
+      state.teams = [];
       state.rankings = [];
       state.phase = 'lobby';
       state.lastPlay = null;

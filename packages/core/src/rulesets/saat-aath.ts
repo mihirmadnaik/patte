@@ -224,9 +224,12 @@ export const saatAath: Ruleset = {
     }));
   },
 
-  inlineChoice(state: GameState, playerId: PlayerId): { label: string; option: string } | null {
+  inlineChoice(
+    state: GameState,
+    playerId: PlayerId,
+  ): { label: string; option: string; note?: string } | null {
     return trickAwaitingCollection(state) === playerId
-      ? { label: 'Take the trick', option: TAKE }
+      ? { label: 'Take the trick', option: TAKE, note: 'You won that trick' }
       : null;
   },
 

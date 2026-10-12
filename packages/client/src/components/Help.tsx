@@ -31,6 +31,11 @@ function controlsFor(ruleset: Ruleset): string[] {
   if (ruleset.trumpCall) {
     lines.push('When it is your call, a panel asks you to name a trump suit. Everyone else is told what you chose.');
   }
+  if (ruleset.auction) {
+    lines.push(
+      'Before a hand begins the bidding comes round the table. A panel offers you a stake to declare, or Pass — and shows you what anybody before you has already said.',
+    );
+  }
   if (ruleset.inlineChoice) {
     lines.push('A finished trick stays face up in the middle until whoever won it presses Take, so there is time to see what fell.');
   }
@@ -42,6 +47,11 @@ function controlsFor(ruleset: Ruleset): string[] {
     'The pill under your hand lights up gold when it is your turn, and the cards you may legally play light up with it.',
     'The last card played wears a bright ring, so you can always find what just happened.',
   );
+  if (ruleset.instruction) {
+    lines.push(
+      'When the game wants something a lit-up hand cannot explain, the pill says so in words. Read it — it is the only place that instruction appears.',
+    );
+  }
   return lines;
 }
 

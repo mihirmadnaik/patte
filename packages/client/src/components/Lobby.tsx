@@ -19,9 +19,10 @@ export function Lobby({
   /** Which explanation is open: the app's, one game's, or none. */
   const [reading, setReading] = useState<'help' | Ruleset | null>(null);
 
-  // Only games with a scoreboard have anything to say about match length.
+  // Only games with a scoreboard have anything to say about match length --
+  // and a game scored as a running ledger has no last round to run to.
   const chosen = OFFERED_RULESETS.find((ruleset) => ruleset.id === rulesetId);
-  const multiRound = chosen !== undefined && !chosen.autoStart;
+  const multiRound = chosen !== undefined && !chosen.autoStart && !chosen.openEnded;
 
   const remember = (): string => {
     const trimmed = name.trim() || 'Player';

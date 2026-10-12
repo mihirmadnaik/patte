@@ -12,7 +12,7 @@
  * is, and how the result is scored.
  */
 
-import type { Card, CardId, GameState, PlayerId, Rank, Suit, Zone, ZoneId } from '../state.js';
+import type { Card, CardId, GameState, PlayerId, Point, Rank, Suit, Zone, ZoneId } from '../state.js';
 
 /**
  * The short pack both games use: no card below a seven, and only two sevens.
@@ -43,6 +43,8 @@ export const SUIT_LABEL: Record<Suit, string> = {
 };
 
 export const TRICK_ZONE: ZoneId = 'trick';
+/** Where cards that have been dealt but not handed out yet wait. */
+export const STOCK_ZONE: ZoneId = 'stock';
 /** The option value for picking up a won trick. */
 export const TAKE = 'take';
 
@@ -59,19 +61,26 @@ function rankOrder(rank: Rank): number {
 }
 
 /**
- * Whether `challenger` beats `leader`, given what was led and what is trump.
+ * Whether `challenger` beats `leader`, told outright which of the two are
+ * trumps.
  *
- * Trump beats non-trump; otherwise only a card of the led suit can win, and
- * between two cards of one suit the higher rank takes it. That is the entire
- * rule -- no exceptions, which is what dropping the super-trumps buys.
+ * Separated from `beats` because trumpiness is not always a property of the
+ * card: in लाडीस the trump suit is face down for part of the hand, and a card
+ * of that suit played before it was turned up was never a trump. So whether
+ * something is a trump can depend on *when* it was played, and the comparison
+ * has to be able to be told rather than work it out.
  */
-export function beats(challenger: Card, leader: Card, led: Suit, trump: Suit): boolean {
+function stronger(
+  challenger: Card,
+  leader: Card,
+  led: Suit,
+  aTrump: boolean,
+  bTrump: boolean,
+): boolean {
   const a = challenger.face?.suit;
   const b = leader.face?.suit;
   if (!a || !b || !challenger.face || !leader.face) return false;
 
-  const aTrump = a === trump;
-  const bTrump = b === trump;
   if (aTrump !== bTrump) return aTrump;
 
   // Same category now: either both trumps or neither. A card off-suit and
@@ -80,6 +89,23 @@ export function beats(challenger: Card, leader: Card, led: Suit, trump: Suit): b
   if (!aTrump && b !== led) return true;
 
   return rankOrder(challenger.face.rank) < rankOrder(leader.face.rank);
+}
+
+/**
+ * Whether `challenger` beats `leader`, given what was led and what is trump.
+ *
+ * Trump beats non-trump; otherwise only a card of the led suit can win, and
+ * between two cards of one suit the higher rank takes it. That is the entire
+ * rule -- no exceptions, which is what dropping the super-trumps buys.
+ */
+export function beats(challenger: Card, leader: Card, led: Suit, trump: Suit): boolean {
+  return stronger(
+    challenger,
+    leader,
+    led,
+    challenger.face?.suit === trump,
+    leader.face?.suit === trump,
+  );
 }
 
 // --- reading the table -----------------------------------------------------
@@ -156,7 +182,15 @@ export function trickWinner(
   cards: readonly CardId[],
   lastActor: PlayerId,
   order: readonly PlayerId[],
-  trump: Suit,
+  trump: Suit | null,
+  /**
+   * Whether the card at this position in the trick counts as a trump.
+   *
+   * Defaults to the plain answer -- its suit is the trump suit -- which is
+   * what both thirty-card games want. लाडीस passes its own, because a hand
+   * there can start with no trump at all and acquire one partway through.
+   */
+  isTrump?: (cardId: CardId, index: number) => boolean,
 ): PlayerId | null {
   const seats = order.length;
   const closedAt = order.indexOf(lastActor);
@@ -166,11 +200,16 @@ export function trickWinner(
   const led = state.cards[cards[0]!]?.face?.suit;
   if (!led) return null;
 
+  const trumpy =
+    isTrump ?? ((cardId: CardId): boolean => trump !== null && state.cards[cardId]?.face?.suit === trump);
+
   let best = 0;
   for (let i = 1; i < cards.length; i++) {
     const challenger = state.cards[cards[i]!];
     const leader = state.cards[cards[best]!];
-    if (challenger && leader && beats(challenger, leader, led, trump)) best = i;
+    if (challenger && leader && stronger(challenger, leader, led, trumpy(cards[i]!, i), trumpy(cards[best]!, best))) {
+      best = i;
+    }
   }
 
   return order[(ledAt + best) % seats] ?? null;
@@ -195,6 +234,28 @@ export function pileZone(playerId: PlayerId): Zone {
     sealed: true,
     cards: [],
     label: 'tricks',
+  };
+}
+
+/**
+ * Where the part of the pack that has not been handed out yet waits.
+ *
+ * Nobody sees these, including whoever they are destined for. Both games that
+ * use it deal in two halves with a decision in between -- a trump call, an
+ * auction -- and the decision is only difficult because the rest of the hand
+ * genuinely is not known yet.
+ */
+export function stockZone(pos: Point = { x: 0.5, y: 0.4 }): Zone {
+  return {
+    id: STOCK_ZONE,
+    kind: 'deck',
+    owner: null,
+    layout: 'stack',
+    faceDownVisibleTo: 'none',
+    openToOthers: false,
+    cards: [],
+    pos,
+    label: 'to deal',
   };
 }
 

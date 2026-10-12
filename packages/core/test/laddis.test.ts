@@ -189,9 +189,10 @@ describe('the auction', () => {
   it('offers stakes in eights and refuses anything else', () => {
     const t = dealt();
     const bidder = laddis.auction!(t.state)!.bidder;
-    expect(laddis.auction!(t.state)!.stakes).toEqual([8, 16, 24, 32, 40, 48, 56, 64]);
+    expect(laddis.auction!(t.state)!.stakes).toEqual([8, 16, 24, 32]);
     expect(t.submit(bidder, { type: 'choose', option: 'vakkhai:12' })).toMatchObject({ ok: false });
-    expect(t.submit(bidder, { type: 'choose', option: 'vakkhai:72' })).toMatchObject({ ok: false });
+    // Thirty-two is the ceiling, so the next rung up is not on offer at all.
+    expect(t.submit(bidder, { type: 'choose', option: 'vakkhai:40' })).toMatchObject({ ok: false });
   });
 
   it('will not go below the standing declaration', () => {

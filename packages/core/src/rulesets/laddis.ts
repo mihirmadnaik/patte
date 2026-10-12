@@ -107,9 +107,9 @@ const CHALLENGER_QUOTA = 5;
 const DEALER_POSTS = 10;
 const CHALLENGER_POSTS = 5;
 
-/** Stakes are named in eights, as high as sixty-four. */
+/** Stakes are named in eights, as high as thirty-two. */
 const STAKE_STEP = 8;
-const MAX_STAKE = 64;
+const MAX_STAKE = 32;
 /**
  * Every thirty-two points the deal crosses to the partner.
  *
@@ -553,7 +553,7 @@ export const laddis: Ruleset = {
 
     if (event.type === 'gameDataSet' && event.key === 'vakkhai' && event.value !== viewer) {
       const declarer = typeof event.value === 'string' ? event.value : null;
-      return `${nameOf(state, declarer)} has declared वाक्खाई for ${stakeOf(state) || MAX_STAKE}`;
+      return `${nameOf(state, declarer)} has declared वाक्खाई for ${stakeOf(state)}`;
     }
 
     return null;

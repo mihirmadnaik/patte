@@ -18,6 +18,7 @@ import {
 import { useState } from 'react';
 import { copyText } from '../clipboard.js';
 import type { Connection } from '../net.js';
+import { seatColour } from '../players.js';
 import { sounds } from '../sound.js';
 import { useStore } from '../store.js';
 import { Scoreboard } from './Scoreboard.js';
@@ -302,8 +303,13 @@ export function StatusBar({
   // the table you had to work out by counting. In Sevens that matters -- being
   // out of cards is how you win, so how close you are is the score.
   const held = state.zones[`hand:${you}`]?.cards.length ?? 0;
+  // Everybody else's colour is on their name plate. You have no plate -- this
+  // pill is where your own name would be -- so yours goes here, and without it
+  // you would be the one player who could not find their own card in a trick.
+  const colour = seatColour(state, you);
   const cards = (
     <span className="statusbar__held">
+      {colour && <i className="statusbar__dot" style={{ background: colour }} />}
       {held} card{held === 1 ? '' : 's'}
     </span>
   );

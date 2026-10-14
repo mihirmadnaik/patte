@@ -23,6 +23,13 @@ export interface CardViewProps {
   blocked: boolean;
   /** The card most recently put down, so the table can see what was played. */
   lastPlay: boolean;
+  /**
+   * The colour of whoever played it, marked in the corner.
+   *
+   * Only for cards on the table. A card is the same from every seat, so
+   * without this the middle of the table cannot say who put anything there.
+   */
+  marker?: string;
   interactive: boolean;
   /**
    * Laid out in flow rather than positioned on the table.
@@ -106,6 +113,10 @@ export function CardView(props: CardViewProps): React.JSX.Element {
       onPointerUp={(event) => props.onPointerUp?.(event, props.cardId)}
       onDoubleClick={() => props.onDoubleClick(props.cardId)}
     >
+      {/* Bottom-left on purpose: a trick is a row stepped left to right, so
+          the left edge of every card stays uncovered while the right edge of
+          all but the last is under its neighbour. */}
+      {props.marker && <span className="card__owner" style={{ background: props.marker }} />}
       {showFace && face ? (
         <>
           <span className="card__corner card__corner--tl">

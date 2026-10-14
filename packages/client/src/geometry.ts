@@ -32,23 +32,19 @@ export const ROW_EXPOSURE_PHONE = 1;
 export const TRICK_WIDTH = 2.7;
 
 /**
- * How far a card in the trick sits from the middle of the trick, towards the
- * player who played it, as a fraction of a card's height.
+ * How far each card in the trick is stepped along from the one before it, as
+ * a fraction of a card's width.
  *
- * Shared by the placement, the box drawn under the trick and the fit model,
- * because a trick sorted by seat is nearly twice as tall as one laid out in a
- * row -- and the model used to budget exactly one card for it. Every layout
- * bug in this file has come from a model that restated the placement instead
- * of sharing it.
+ * Wide enough that the corner of every card stays uncovered, because that
+ * corner is where the colour saying whose card it is sits. The whole run has
+ * to fit inside `TRICK_WIDTH`, which the fit model has already paid for:
+ * four cards at this step come to 2.5 of a card against the 2.7 budgeted.
  */
-export const TRICK_SPREAD_Y = 0.46;
+export const TRICK_STEP = 0.5;
 
-/** The box a trick actually occupies, once it is sorted by seat. */
+/** The box a trick occupies. */
 export function trickSize(m: Metrics): { width: number; height: number } {
-  return {
-    width: m.cardW * TRICK_WIDTH,
-    height: m.cardH * (1 + 2 * TRICK_SPREAD_Y),
-  };
+  return { width: m.cardW * TRICK_WIDTH, height: m.cardH };
 }
 /**
  * How large a card is allowed to be, once it is known what will fit.
@@ -183,9 +179,9 @@ function heightNeeded(m: Metrics, family: LayoutFamily): number {
       return rowsTop(m) + rows + rowHandGap(m) + m.cardH * 1.45 + m.statusBand;
     }
     case 'trick':
-      // Name plates, then the trick -- which is spread out towards the seats
-      // and so costs more than one card's height -- then the same gap and
-      // hand the rows layout uses.
+      // Name plates, then a trick a card tall, then the same gap and hand the
+      // rows layout uses. Opponents' hands are not drawn, so this is a roomy
+      // table and the cards stay at full size.
       return rowsTop(m) + trickSize(m).height + rowHandGap(m) + m.cardH * 1.45 + m.statusBand;
     case 'free':
       return m.cardH * 3 + m.fanLift;
@@ -401,45 +397,34 @@ export function trickBand(m: Metrics, height: number): number {
   return (top + Math.max(bottom, top + m.cardH)) / 2;
 }
 
-/** Where a card in the trick belongs: under whose plate, and which row. */
-export interface TrickSeat {
-  /** The middle of that player's column, in table pixels. */
-  x: number;
-  /** Yours sits below the middle of the trick; everybody else's above it. */
-  below: boolean;
-}
-
 /**
- * A card in the trick, under the player who played it.
+ * A card in the trick: a row, in the order they were played.
  *
- * A row of cards in play order says what was led and in what order, and says
- * nothing at all about *whose* each one is -- which on a four-handed table is
- * the question actually being asked.
+ * Which card is whose is answered by a colour on the card rather than by
+ * where it lies. Position was tried first -- each card in a column under its
+ * own player's name plate -- and it reads well with four cards down but
+ * spends the table badly: a trick sorted into columns is nearly twice as tall
+ * as a row, it takes that height from the cards themselves, and it is laid
+ * out around a seating this table does not really have, since everybody but
+ * you is a plate along the top edge.
  *
- * Deliberately not a ring of cards around the middle, which is how they would
- * lie at a real table: this table does not seat people in a ring. Opponents
- * are a strip of name plates along the top, in seating order, so a card goes
- * directly under its own plate and yours goes below the trick, nearest you.
- * The column *is* the answer -- the first thing you read is the name, and the
- * card is beneath it. A ring on a phone put the left and right cards across
- * the bottom one and buried the card you most wanted to find: your own.
+ * A row costs one card's height, keeps the order the cards were played in,
+ * and leaves the question of whose each one is to a mark that is the same
+ * wherever the card happens to be.
  */
 export function trickPlacement(
   m: Metrics,
-  seat: TrickSeat,
   origin: { x: number; y: number },
-  width: number,
   index: number,
+  count: number,
 ): Placement {
-  const half = m.cardW / 2;
+  const run = m.cardW * (1 + Math.max(count - 1, 0) * TRICK_STEP);
   return {
-    // Clamped to the table: a plate near the edge is pulled inwards, and a
-    // card hanging half off the screen is worse than one slightly out of line.
-    x: Math.max(SIDE_MARGIN, Math.min(seat.x, width - SIDE_MARGIN - m.cardW + half) - half),
-    y: origin.y - m.cardH / 2 + (seat.below ? 1 : -1) * m.cardH * TRICK_SPREAD_Y,
+    // Centred on the trick as a whole, so a growing trick stays put rather
+    // than creeping to the right as each card lands.
+    x: origin.x - run / 2 + index * m.cardW * TRICK_STEP,
+    y: origin.y - m.cardH / 2,
     rotate: 0,
-    // Play order still decides what overlaps what, so the card that just
-    // landed sits on top of the one before it.
     z: index,
   };
 }
@@ -617,20 +602,13 @@ export function placementsFor(
   origin: { x: number; y: number },
   cardPos: (cardId: string) => { x: number; y: number } | undefined,
   rank_: (cardId: string) => string | undefined = () => undefined,
-  /** Which column a card belongs in, for a trick sorted by seat. */
-  seatOf: (cardId: string) => TrickSeat | undefined = () => undefined,
 ): Map<string, Placement> {
   const out = new Map<string, Placement>();
 
   zone.cards.forEach((cardId, index) => {
     if (zone.kind === 'trick') {
-      const seat = seatOf(cardId);
-      // Only when we know whose it is. A card nobody is recorded as having
-      // played falls back to the spread, rather than piling up at the centre.
-      if (seat !== undefined) {
-        out.set(cardId, trickPlacement(m, seat, origin, bounds.width, index));
-        return;
-      }
+      out.set(cardId, trickPlacement(m, origin, index, zone.cards.length));
+      return;
     }
 
     if (zone.kind === 'stack') {

@@ -227,6 +227,18 @@ html, body, #root {
   transition: border-color 200ms var(--ease), opacity 200ms var(--ease);
 }
 
+/* The key to the colours on the table: the same dot, beside the name. */
+.seat__dot,
+.statusbar__dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 50%;
+  vertical-align: baseline;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+
 .seat__name { display: block; font-size: 13px; font-weight: 600; }
 .seat__count { display: block; font-size: 11px; opacity: 0.65; }
 .seat.is-turn {
@@ -328,6 +340,26 @@ html, body, #root {
   place-items: center;
   font-size: 2.615em;
   opacity: 0.9;
+}
+
+/*
+ * Whose card this is.
+ *
+ * Bottom-left, which is the one corner that is free on a face -- the rank
+ * sits top-left, the private dot top-right, the second rank bottom-right --
+ * and the one that stays uncovered when a trick steps left to right. Sized in
+ * `em` like everything else printed on a card, so it shrinks with the card
+ * rather than swamping a small one.
+ */
+.card__owner {
+  position: absolute;
+  bottom: 0.42em;
+  left: 0.42em;
+  width: 0.72em;
+  height: 0.72em;
+  border-radius: 50%;
+  /* A ring, so the mark reads on a white face and on a dark back alike. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .card.is-selected { outline: 2px solid var(--accent); outline-offset: 1px; }

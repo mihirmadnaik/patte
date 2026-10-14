@@ -30,6 +30,7 @@ import {
   type Placement,
 } from '../geometry.js';
 import { handOrderFor, sortHand } from '../handsort.js';
+import { cardColour, seatColour } from '../players.js';
 import { sounds } from '../sound.js';
 import { useStore } from '../store.js';
 import { isTouchOnly } from '../useCompact.js';
@@ -240,15 +241,6 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
       origin,
       (cardId) => state.cards[cardId]?.pos,
       (cardId) => state.cards[cardId]?.face?.rank,
-      // Whose card it is, so the trick can put each one under its own player.
-      // The engine records who put it there; working it back out from the
-      // trick's length and the turn order would be reimplementing a rule.
-      (cardId) => {
-        const by = state.playedBy[cardId];
-        if (!by) return undefined;
-        if (by === you) return { x: bounds.width / 2, below: true };
-        return { x: seatOf(by).badge.x, below: false };
-      },
     );
 
     // A player's own hand sits above everything; other hands sit behind the
@@ -584,20 +576,18 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         );
       })}
 
-      {/* The band the trick occupies, which is the whole width of the table
-          once the cards are sorted into columns under the name plates. A box
-          drawn round the middle would no longer contain them -- and as the
-          drop target for a dragged card, the band is the honest answer
-          anyway. */}
+      {/* Where the trick lies, and the drop target for a dragged card. Sized
+          from the same helper the cards are placed by, so the box is always
+          the room the trick was actually given. */}
       {measured && state.zones[TRICK_ZONE_ID] && (
         <div
           className="trick-slot"
           data-zone={TRICK_ZONE_ID}
           style={{
-            left: 12,
-            top: zoneOrigin(TRICK_ZONE_ID).y - trickSize(m).height / 2,
-            width: Math.max(bounds.width - 24, m.cardW),
-            height: trickSize(m).height,
+            left: zoneOrigin(TRICK_ZONE_ID).x - trickSize(m).width / 2,
+            top: zoneOrigin(TRICK_ZONE_ID).y - trickSize(m).height * 0.75,
+            width: trickSize(m).width,
+            height: trickSize(m).height * 1.5,
           }}
         />
       )}
@@ -636,6 +626,7 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         // partner is the first thing you need to know and the one thing the
         // table cannot show -- everybody is drawn along the same strip.
         const partner = state.teams.some((team) => team.includes(you) && team.includes(playerId));
+        const colour = seatColour(state, playerId);
         return (
           <div
             key={playerId}
@@ -645,6 +636,10 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
             style={{ left: badge.x, top: badge.y }}
           >
             <span className="seat__name">
+              {/* The key to the marks on the table. Beside the name rather
+                  than anywhere else, because the name is what you are reading
+                  when you want to know whose a card was. */}
+              {colour && <i className="seat__dot" style={{ background: colour }} />}
               {player.name}
               {partner && <em className="seat__partner">partner</em>}
             </span>
@@ -683,6 +678,9 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
             // In a refereed game, light up what can be played and dim what
             // cannot, but only in your own hand and only on your turn.
             lastPlay={justPlayed.has(card.id)}
+            // Whose card this is. The engine recorded who put it there, so
+            // the question survives the cards being shuffled about on screen.
+            {...(cardColour(state, card.id) ? { marker: cardColour(state, card.id) } : {})}
             playable={refereed && myTurn && playable.has(card.id)}
             blocked={refereed && myTurn && card.zone === `hand:${you}` && !playable.has(card.id)}
             interactive={mayTouch(card.id)}

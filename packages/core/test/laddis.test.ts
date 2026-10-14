@@ -215,27 +215,141 @@ describe('the auction', () => {
     expect(t.state.gameData['stake']).toBe(24);
   });
 
-  it('breaks a tie in the dealer\'s favour', () => {
+  it('does not hand a tie to anybody — it asks them again', () => {
     const t = dealt();
     const turns = t.state.inPlay;
-    const dealer = turns.at(-1)!;
     say(t, turns[0]!, 'vakkhai:16');
     say(t, turns[1]!, 'vakkhai:16');
     say(t, turns[2]!, PASS);
-    say(t, dealer, 'vakkhai:16');
-    expect(t.state.gameData['vakkhai']).toBe(dealer);
+    say(t, turns[3]!, PASS);
+
+    // Nobody has the hand yet, and the two who tied are being asked again.
+    expect(t.state.gameData['vakkhai']).toBeUndefined();
+    expect(stage(t.state)).toBe('bidding');
+    expect(laddis.auction!(t.state)!.bidder).toBe(turns[0]);
   });
 
-  it('breaks a tie between two others in favour of whoever said it first', () => {
+  it('asks tied opponents to outbid each other', () => {
     const t = dealt();
     const turns = t.state.inPlay;
-    // Nearness cannot settle this: both of these sit one seat from the dealer,
-    // on either side of them. Order of speaking is all there is.
+    // Adjacent seats, so opposite sides: partners sit two apart.
+    const [first, second] = turns;
+    expect(t.state.teams.some((team) => team.includes(first!) && team.includes(second!))).toBe(false);
+
+    say(t, first!, 'vakkhai:8');
+    say(t, second!, 'vakkhai:8');
+    say(t, turns[2]!, PASS);
+    say(t, turns[3]!, PASS);
+
+    const call = laddis.auction!(t.state)!;
+    expect(call.bidder).toBe(first);
+    // Holding at the same number is not on offer: they must go higher or go.
+    expect(call.stakes).toEqual([16, 24, 32]);
+    expect(call.passLabel).toBe('Stand down');
+
+    say(t, first!, 'vakkhai:16');
+    say(t, second!, PASS);
+    expect(t.state.gameData['vakkhai']).toBe(first);
+    expect(t.state.gameData['stake']).toBe(16);
+  });
+
+  it('asks tied partners which of them is giving way, at the same stake', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    // Two seats apart, which is across the table: the same side.
+    const [first, second, third, fourth] = turns;
+    say(t, first!, 'vakkhai:8');
+    say(t, second!, PASS);
+    say(t, third!, 'vakkhai:8');
+    say(t, fourth!, PASS);
+    // `first` and `third` are two apart, so they are partners.
+    expect(t.state.teams.some((team) => team.includes(first!) && team.includes(third!))).toBe(true);
+
+    const call = laddis.auction!(t.state)!;
+    // No outbidding your own partner: the stake is fixed and the only
+    // question is who yields.
+    expect(call.stakes).toEqual([8]);
+    expect(call.passLabel).toBe('Let them have it');
+
+    say(t, first!, 'vakkhai:8');
+    say(t, third!, PASS);
+    expect(t.state.gameData['vakkhai']).toBe(first);
+    expect(t.state.gameData['stake']).toBe(8);
+  });
+
+  it('keeps asking partners who both hold', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    const [first, second, third, fourth] = turns;
+    say(t, first!, 'vakkhai:8');
+    say(t, second!, PASS);
+    say(t, third!, 'vakkhai:8');
+    say(t, fourth!, PASS);
+
+    // Two rounds of both refusing to budge leaves the hand exactly where it
+    // was. That is the rule, not a hang: nothing starts until they settle it.
+    for (let round = 0; round < 3; round++) {
+      say(t, first!, 'vakkhai:8');
+      say(t, third!, 'vakkhai:8');
+      expect(t.state.gameData['vakkhai']).toBeUndefined();
+      expect(laddis.auction!(t.state)!.bidder).toBe(first);
+    }
+
+    say(t, first!, PASS);
+    say(t, third!, 'vakkhai:8');
+    expect(t.state.gameData['vakkhai']).toBe(third);
+  });
+
+  it('gives the ceiling to the side that is not dealing', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    const dealer = turns.at(-1)!;
+    const challenger = turns[0]!;
+    expect(t.state.teams.some((team) => team.includes(dealer) && team.includes(challenger))).toBe(false);
+
+    say(t, challenger, 'vakkhai:32');
+    say(t, turns[1]!, PASS);
+    say(t, turns[2]!, PASS);
+    say(t, dealer, 'vakkhai:32');
+
+    // Settled on the spot. A run-off asks people to outbid each other, and at
+    // the ceiling there is nothing to ask -- so the standing rule decides it
+    // rather than putting a question neither of them can answer.
+    expect(laddis.auction!(t.state)).toBeNull();
+    expect(t.state.gameData['vakkhai']).toBe(challenger);
+    expect(t.state.gameData['stake']).toBe(32);
+  });
+
+  it('falls back to the bid underneath when everybody in a run-off gives way', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    const [first, second, third, fourth] = turns;
+    // A bid cannot go below the standing one, so the eight has to come first.
+    say(t, first!, 'vakkhai:8');
+    say(t, second!, 'vakkhai:16');
+    say(t, third!, 'vakkhai:16');
+    say(t, fourth!, PASS);
+
+    // The two at sixteen are opponents and both stand down, so the hand falls
+    // to the eight that was bid under them.
+    say(t, second!, PASS);
+    say(t, third!, PASS);
+    expect(t.state.gameData['vakkhai']).toBe(first);
+    expect(t.state.gameData['stake']).toBe(8);
+  });
+
+  it('reaches the trump call when a run-off empties and nobody else bid', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
     say(t, turns[0]!, 'vakkhai:8');
     say(t, turns[1]!, PASS);
     say(t, turns[2]!, 'vakkhai:8');
     say(t, turns[3]!, PASS);
-    expect(t.state.gameData['vakkhai']).toBe(turns[0]);
+    say(t, turns[0]!, PASS);
+    say(t, turns[2]!, PASS);
+
+    expect(t.state.gameData['vakkhai']).toBeUndefined();
+    expect(stage(t.state)).toBe('calling');
   });
 
   it('takes table business at every stage, bidding included', () => {
@@ -383,8 +497,8 @@ describe('the hidden trump', () => {
   });
 });
 
-describe('trumps played before the reveal', () => {
-  it('win nothing they would not have won as ordinary cards', () => {
+describe('turning the trump up mid-trick', () => {
+  it('leaves a trump-suit card with no special power while the trump is still down', () => {
     const t = playing();
     const caller = t.state.inPlay[0]!;
     const hidden = t.state.zones['trump']!.cards[0]!;
@@ -450,7 +564,16 @@ describe('trumps played before the reveal', () => {
     expect(winner).toEqual([{ type: 'turnSet', playerId: turns[2] }]);
   });
 
-  it('counts the half of a trick played after the trump came up', () => {
+  it('makes a card already lying in the trick a trump too', () => {
+    /*
+     * The case this rule exists for. A heart is led, somebody throws the king
+     * of spades as a plain discard, the next player cannot follow and calls
+     * for the trump -- spades -- and plays the seven.
+     *
+     * Demoting the king because it was put down a moment too early hands the
+     * trick to a seven, which is the wrong answer to look at. Both are
+     * spades, so both are trumps, and the king takes it.
+     */
     const t = playing();
     const hidden = t.state.zones['trump']!.cards[0]!;
     const trump = t.state.cards[hidden]!.face!.suit;
@@ -460,17 +583,17 @@ describe('trumps played before the reveal', () => {
     const winner = laddis.after(
       {
         ...t.state,
-        // Turned up partway through this very trick: two cards were down.
-        gameData: { ...t.state.gameData, trump, revealTrick: 0, revealAt: 2 },
+        gameData: { ...t.state.gameData, trump },
         zones: {
           ...t.state.zones,
           [TRICK_ZONE]: { ...t.state.zones[TRICK_ZONE]!, cards: ['x1', 'x2', 'x3', 'x4'] },
         },
         cards: {
           ...t.state.cards,
-          // The first trump is too early to count; the second is not.
           x1: faced('x1', led, '9'),
-          x2: faced('x2', trump, 'A'),
+          // Thrown while the trump was still face down.
+          x2: faced('x2', trump, 'K'),
+          // Thrown after it was turned up.
           x3: faced('x3', trump, '7'),
           x4: faced('x4', led, '8'),
         },
@@ -478,9 +601,16 @@ describe('trumps played before the reveal', () => {
       { type: 'cardsMoved', placements: [{ cardId: 'x4', toZone: TRICK_ZONE, toIndex: 3 }], seq: 99, at: 0, actor: turns[3]! },
     );
 
-    // The ace of trumps was played a moment too soon and is just an ace of a
-    // suit nobody led; the seven, played after, is the only trump in the trick.
-    expect(winner).toEqual([{ type: 'turnSet', playerId: turns[2] }]);
+    expect(winner).toEqual([{ type: 'turnSet', playerId: turns[1] }]);
+  });
+
+  it('does not reopen a trick that has already been gathered', () => {
+    // Nothing records when the trump came up, because nothing needs to: a
+    // finished trick is face down in somebody's pile and is never judged
+    // again.
+    const t = playing();
+    expect(t.state.gameData['revealTrick']).toBeUndefined();
+    expect(t.state.gameData['revealAt']).toBeUndefined();
   });
 });
 
@@ -806,6 +936,119 @@ describe('turning the trump up', () => {
     const t = playing();
     expect(t.state.gameData['trumpCard']).toBeUndefined();
     expect(t.state.gameData['trump']).toBeUndefined();
+  });
+});
+
+describe('four sevens', () => {
+  /** Put every seven in one player's hand, leaving the counts honest. */
+  function dealtFourSevens(playerId: PlayerId): Table {
+    const t = dealt();
+    const sevens = Object.values(t.state.cards).filter((card) => card.face?.rank === '7').map((c) => c.id);
+    expect(sevens).toHaveLength(4);
+
+    const zones = structuredClone(t.state.zones);
+    const cards = structuredClone(t.state.cards);
+    // Everything the player held that is not a seven goes back to the stock,
+    // and every seven comes to them, so no card is in two places at once.
+    const mine = zones[`hand:${playerId}`]!;
+    const stock = zones['stock']!;
+    const spare = mine.cards.filter((id) => !sevens.includes(id));
+    for (const zone of Object.values(zones)) zone.cards = zone.cards.filter((id) => !sevens.includes(id));
+    mine.cards = [...sevens];
+    stock.cards = [...stock.cards.filter((id) => !spare.includes(id)), ...spare];
+    for (const id of sevens) cards[id]!.zone = mine.id;
+    for (const id of spare) cards[id]!.zone = stock.id;
+
+    t.state = { ...t.state, zones, cards };
+    expect(checkInvariants(t.state)).toEqual([]);
+    return t;
+  }
+
+  it('offers a fresh deal to whoever holds them all', () => {
+    const t = dealtFourSevens('ana');
+    expect(laddis.redealClaim!(t.state, 'ana')?.prompt).toBe('You have four 7s, would you like to redeal?');
+    for (const other of PLAYERS.filter((id) => id !== 'ana')) {
+      expect(laddis.redealClaim!(t.state, other), other).toBeNull();
+    }
+  });
+
+  it('deals again, says so, and leaves the scores alone', () => {
+    const t = dealtFourSevens('ana');
+    const before = t.state.match.played.length;
+    const dealer = t.state.gameData['dealer'];
+
+    const claimed = t.submit('ana', { type: 'claimRedeal' });
+    expect(claimed.ok).toBe(true);
+
+    // Everybody is told why their hand went away.
+    expect(t.state.declarations.at(-1)?.text).toContain('four 7s');
+    expect(t.state.declarations.at(-1)?.by).toBe('ana');
+
+    // A fresh hand, the same dealer, and nothing scored.
+    expect(t.state.phase).toBe('playing');
+    expect(stage(t.state)).toBe('bidding');
+    expect(t.state.match.played).toHaveLength(before);
+    expect(t.state.gameData['dealer']).toBe(dealer);
+    expect(hand(t.state, 'ana')).toHaveLength(4);
+    expect(checkInvariants(t.state)).toEqual([]);
+  });
+
+  it('carries the ledger across the fresh deal', () => {
+    const t = dealtFourSevens('ana');
+    t.commit(null, [
+      { type: 'gameDataSet', key: 'balance', value: 15 },
+      { type: 'gameDataSet', key: 'owing', value: 'ana' },
+    ]);
+    expect(t.submit('ana', { type: 'claimRedeal' }).ok).toBe(true);
+    expect(ledger(t.state)).toEqual({ balance: 15, owing: 'ana' });
+  });
+
+  it('refuses the claim from anybody who does not hold them', () => {
+    const t = dealtFourSevens('ana');
+    expect(t.submit('ben', { type: 'claimRedeal' })).toMatchObject({ ok: false });
+  });
+
+  it('is off the table once a card has been played', () => {
+    const t = dealtFourSevens('ana');
+    // Pass the bidding out, set a trump, and lead -- by which point the hand
+    // is under way and the offer has gone.
+    passRound(t);
+    const caller = t.state.inPlay[0]!;
+    t.submit(caller, { type: 'move', cardIds: [hand(t.state, caller)[0]!], toZone: 'trump' });
+    const leader = t.state.turn!;
+    t.submit(leader, { type: 'move', cardIds: [legal(t.state, leader)[0]!], toZone: TRICK_ZONE });
+
+    expect(laddis.redealClaim!(t.state, 'ana')).toBeNull();
+    expect(t.submit('ana', { type: 'claimRedeal' })).toMatchObject({ ok: false });
+  });
+
+  it('is still open after the second half of the deal', () => {
+    // The four can arrive split across the two halves, so the offer is made
+    // whenever it becomes true rather than once at the start.
+    const t = dealt();
+    passRound(t);
+    const caller = t.state.inPlay[0]!;
+    t.submit(caller, { type: 'move', cardIds: [hand(t.state, caller)[0]!], toZone: 'trump' });
+    expect(stage(t.state)).toBe('playing');
+
+    const holder = PLAYERS.find((id) => id !== caller)!;
+    const sevens = Object.values(t.state.cards).filter((c) => c.face?.rank === '7').map((c) => c.id);
+    const zones = structuredClone(t.state.zones);
+    const cards = structuredClone(t.state.cards);
+    const mine = zones[`hand:${holder}`]!;
+    const spare = mine.cards.filter((id) => !sevens.includes(id)).slice(0, sevens.length);
+    for (const zone of Object.values(zones)) zone.cards = zone.cards.filter((id) => !sevens.includes(id));
+    mine.cards = [...mine.cards.filter((id) => !spare.includes(id)), ...sevens];
+    for (const id of sevens) cards[id]!.zone = mine.id;
+    // The cards they gave up go to whoever the sevens came from, so the
+    // table still holds exactly thirty-two.
+    const elsewhere = zones[`hand:${caller}`]!;
+    elsewhere.cards = [...elsewhere.cards, ...spare];
+    for (const id of spare) cards[id]!.zone = elsewhere.id;
+    t.state = { ...t.state, zones, cards };
+
+    expect(checkInvariants(t.state)).toEqual([]);
+    expect(laddis.redealClaim!(t.state, holder)).not.toBeNull();
   });
 });
 

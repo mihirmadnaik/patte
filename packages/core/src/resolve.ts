@@ -241,6 +241,14 @@ function checkStructural(
       return { ok: true, events: [] };
     }
 
+    case 'claimRedeal': {
+      if (state.phase !== 'playing') return deny('there is no hand to redeal');
+      if (!deps.ruleset.redealClaim?.(state, actor)) {
+        return deny('nothing in your hand entitles you to a fresh deal');
+      }
+      return { ok: true, events: [] };
+    }
+
     case 'answerRedeal': {
       const proposal = state.redeal;
       if (!proposal) return deny('nobody has asked for a redeal');
@@ -396,6 +404,19 @@ function build(
         waitingOn: others,
         reset: intent.reset === true,
       });
+    }
+
+    case 'claimRedeal': {
+      // Said out loud before the cards go back in: everybody else is about to
+      // lose a hand they have already looked at, and ought to be told why.
+      const claim = deps.ruleset.redealClaim?.(state, actor);
+      return {
+        ok: true,
+        events: [
+          ...(claim ? [{ type: 'declared' as const, by: actor, text: claim.said }] : []),
+          ...dealEvents(state, deps, false),
+        ],
+      };
     }
 
     case 'answerRedeal': {

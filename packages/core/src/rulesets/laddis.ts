@@ -89,6 +89,8 @@ import {
 const HANDLING: readonly Intent['type'][] = ['grab', 'release', 'peek'];
 
 const SEATS = 4;
+/** Four sevens is every seven there is, which is a hand worth refusing. */
+const SUITS_IN_PACK = 4;
 /** Thirty-two cards: ace down to seven, nothing below it, ace high. */
 const RANKING = ['A', 'K', 'Q', 'J', '10', '9', '8', '7'] as const;
 
@@ -157,6 +159,13 @@ function textAt(state: GameState, key: string): string | null {
 
 function nameOf(state: GameState, playerId: PlayerId | null): string {
   return (playerId && state.players[playerId]?.name) || 'Another player';
+}
+
+/** Several people, read out the way you would say them. */
+function nameList(state: GameState, players: readonly PlayerId[]): string {
+  const names = players.map((id) => nameOf(state, id));
+  if (names.length <= 1) return names[0] ?? 'Nobody';
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 }
 
 /**
@@ -275,29 +284,24 @@ function revealedTrump(state: GameState): Suit | null {
   return typeof named === 'string' && TRUMP_SUITS.includes(named as Suit) ? (named as Suit) : null;
 }
 
-/**
- * Whether the card at this position in the trick being judged is a trump.
+/*
+ * Turning the trump up applies to the trick it is turned up in, cards and all.
  *
- * A card of the trump suit played before the reveal was never a trump, so
- * trumpiness is a question about *when* as much as about what. The reveal is
- * recorded as two numbers -- the trick it happened in and how many cards were
- * already down -- which is enough to answer it exactly, including for the one
- * trick that was half played when the trump came up.
+ * It used to demote the ones already lying there: a card of the trump suit
+ * played while the suit was still a secret had been played as a discard, so
+ * it was held not to be a trump. That reads well as a sentence and plays
+ * terribly. Lead a heart, somebody throws the king of spades, the next player
+ * cannot follow and calls for the trump -- spades -- and then takes the trick
+ * with the seven. A seven beating a king, because the king was put down a
+ * moment too early.
+ *
+ * So the suit is simply trump from the moment it is turned up, for every card
+ * in the trick being judged. Tricks already gathered are not reopened: they
+ * were won fairly under what the table knew at the time, and they are face
+ * down in somebody's pile. That is the whole of what "played before the
+ * reveal" means now, and it needs nothing written down to know it -- which is
+ * why `trickWinner` is back to being told a suit and nothing else.
  */
-function trumpedAt(state: GameState): (cardId: CardId, index: number) => boolean {
-  const trump = revealedTrump(state);
-  if (!trump) return () => false;
-
-  const from = numberAt(state, 'revealTrick');
-  const after = numberAt(state, 'revealAt');
-  const now = tricksPlayed(state);
-
-  return (cardId: CardId, index: number): boolean => {
-    if (state.cards[cardId]?.face?.suit !== trump) return false;
-    if (now !== from) return now > from;
-    return index >= after;
-  };
-}
 
 /**
  * Whether this player may demand the trump be turned up.
@@ -316,15 +320,57 @@ function mayAsk(state: GameState, playerId: PlayerId): boolean {
 }
 
 // --- the auction -----------------------------------------------------------
+//
+// One circuit of the table, and then as many run-offs as it takes.
+//
+// A tie used to be settled by a rule -- the dealer, or whoever spoke first --
+// which decides it but does not make it fair: two players wanted the same
+// hand at the same price and one of them was simply handed it. So a tie is
+// now put back to the players who made it, and what they are offered depends
+// on who they are. Opponents are asked to outbid each other; partners, who
+// cannot sensibly bid each other up, are asked which of them is giving way.
+//
+// Only the ceiling ends an argument from outside: two opponents who have both
+// run out of room to raise are separated by the one standing rule there is,
+// which is that the side not dealing is the side under pressure, so the hand
+// is theirs.
 
+/** What a player has declared, or null while they have not spoken. */
 function bidOf(state: GameState, playerId: PlayerId): number | null {
   const value = state.gameData[`bid:${playerId}`];
   return typeof value === 'number' ? value : null;
 }
 
-/** The first player, going round from the dealer's right, yet to speak. */
+/** A run-off in progress: who is in it, at what stake, and which round. */
+interface Runoff {
+  players: PlayerId[];
+  stake: number;
+  round: number;
+}
+
+function runoffOf(state: GameState): Runoff | null {
+  const list = textAt(state, 'runoff');
+  if (!list) return null;
+  const players = list.split('|').filter((id) => state.inPlay.includes(id));
+  if (players.length < 2) return null;
+  return { players, stake: numberAt(state, 'roStake'), round: numberAt(state, 'roRound') };
+}
+
+/** Where a player's answer to the question currently being asked is written. */
+function answerKey(playerId: PlayerId, runoff: Runoff | null): string {
+  return runoff ? `say${runoff.round}:${playerId}` : `bid:${playerId}`;
+}
+
+function answerOf(state: GameState, playerId: PlayerId, runoff: Runoff | null): number | null {
+  const value = state.gameData[answerKey(playerId, runoff)];
+  return typeof value === 'number' ? value : null;
+}
+
+/** The next player who owes an answer, in seating order. Null when all have. */
 function nextBidder(state: GameState): PlayerId | null {
-  return state.inPlay.find((id) => bidOf(state, id) === null) ?? null;
+  const runoff = runoffOf(state);
+  const asking = runoff ? state.inPlay.filter((id) => runoff.players.includes(id)) : state.inPlay;
+  return asking.find((id) => answerOf(state, id, runoff) === null) ?? null;
 }
 
 /** The highest stake declared so far; zero when everybody has passed. */
@@ -332,27 +378,10 @@ function standingStake(state: GameState): number {
   return state.inPlay.reduce((high, id) => Math.max(high, bidOf(state, id) ?? 0), 0);
 }
 
-/**
- * Who has won the bidding, once it has been all the way round.
- *
- * The highest stake takes it, and a tie goes to the dealer. Between two others
- * it goes to whoever said the number first -- which is the only thing that
- * *can* decide it. Nearness to the dealer sounds like the obvious tie-break
- * and is no tie-break at all: in a ring of four the two players who are not
- * the dealer's partner both sit one seat from the dealer, on either side of
- * them, so they are always exactly as near as each other.
- */
-function auctionWinner(state: GameState): { playerId: PlayerId; stake: number } | null {
-  const stake = standingStake(state);
-  if (stake === 0) return null;
-
-  const tied = state.inPlay.filter((id) => bidOf(state, id) === stake);
-  const dealer = dealerOf(state);
-  if (dealer && tied.includes(dealer)) return { playerId: dealer, stake };
-
-  // `inPlay` is the order they spoke in, so the front of it is the first to
-  // have named this stake.
-  return tied[0] !== undefined ? { playerId: tied[0], stake } : null;
+/** Whether these players are all on one side of the table. */
+function oneSided(state: GameState, players: readonly PlayerId[]): boolean {
+  const first = players[0];
+  return first === undefined || players.every((id) => sameSide(state, id, first));
 }
 
 function parseStake(option: string): number | null {
@@ -362,13 +391,117 @@ function parseStake(option: string): number | null {
   return stake;
 }
 
-/** The stakes still open: eights from the standing call up to the ceiling. */
-function stakeLadder(standing: number): number[] {
+/** Eights from `floor` up to the ceiling. */
+function stakeLadder(floor: number): number[] {
   const stakes: number[] = [];
-  for (let stake = Math.max(STAKE_STEP, standing); stake <= MAX_STAKE; stake += STAKE_STEP) {
+  for (let stake = Math.max(STAKE_STEP, floor); stake <= MAX_STAKE; stake += STAKE_STEP) {
     stakes.push(stake);
   }
   return stakes;
+}
+
+/**
+ * What the player being asked may say.
+ *
+ * In the opening circuit, any stake from the standing one upwards, or pass.
+ * In a run-off between partners the stake is fixed and the only question is
+ * who yields. In a run-off between opponents they must outbid or drop out --
+ * unless the stake is already at the ceiling, where holding is all that is
+ * left and the tie is broken by who is dealing.
+ */
+function openTo(state: GameState, runoff: Runoff | null): number[] {
+  if (!runoff) return stakeLadder(standingStake(state));
+  if (oneSided(state, runoff.players)) return [runoff.stake];
+  return runoff.stake >= MAX_STAKE ? [MAX_STAKE] : stakeLadder(runoff.stake + STAKE_STEP);
+}
+
+// --- settling it -----------------------------------------------------------
+
+/**
+ * Who has won the bidding among these players, or what to ask next.
+ *
+ * The highest stake takes it. Several at the highest is not a tie to be
+ * broken but a question to be put back to them, except at the ceiling, where
+ * opponents have nothing left to say to each other and the hand goes to the
+ * side that is not dealing.
+ */
+function settleAmong(state: GameState, candidates: readonly PlayerId[]): EventBody[] {
+  const live = candidates.filter((id) => (bidOf(state, id) ?? 0) > 0);
+  const top = live.reduce((high, id) => Math.max(high, bidOf(state, id) ?? 0), 0);
+  if (top === 0) return [{ type: 'gameDataSet', key: 'stage', value: 'calling' }];
+
+  let tied = live.filter((id) => bidOf(state, id) === top);
+  if (tied.length === 1) return declareAlone(state, { playerId: tied[0]!, stake: top });
+
+  // At the ceiling there is no raising left, so the standing rule applies:
+  // the side not dealing is the side the points are being aimed at.
+  if (top >= MAX_STAKE && !oneSided(state, tied)) {
+    const dealer = dealerOf(state);
+    const challengers = dealer ? tied.filter((id) => !sameSide(state, id, dealer)) : [];
+    if (challengers.length === 1) return declareAlone(state, { playerId: challengers[0]!, stake: top });
+    if (challengers.length > 1) tied = challengers;
+  }
+
+  return openRunoff(state, tied, top);
+}
+
+/** Put the tie back to the players who made it. */
+function openRunoff(state: GameState, players: readonly PlayerId[], stake: number): EventBody[] {
+  const round = numberAt(state, 'roRound') + 1;
+  return [
+    { type: 'gameDataSet', key: 'roRound', value: round },
+    { type: 'gameDataSet', key: 'roStake', value: stake },
+    // Written last: the other two are read through this one, so setting it
+    // first would open a round whose stake and number are still last round's.
+    { type: 'gameDataSet', key: 'runoff', value: players.join('|') },
+  ];
+}
+
+/**
+ * A run-off round is complete: see where it leaves things.
+ *
+ * Answers are read back as the participants' new bids rather than written
+ * into `bid:` -- a write-back would be several events, and the first of them
+ * would set the table resolving on figures the rest had not reached yet.
+ * Whoever withdrew is simply dropped, and if they all did the hand falls to
+ * whoever was bidding under them.
+ */
+function settleRunoff(state: GameState, runoff: Runoff): EventBody[] {
+  const standing = runoff.players
+    .map((playerId) => ({ playerId, stake: answerOf(state, playerId, runoff) ?? 0 }))
+    .filter((entry) => entry.stake > 0);
+
+  const close: EventBody = { type: 'gameDataSet', key: 'runoff', value: '' };
+
+  // Everybody in the run-off gave way: the hand goes back to the table.
+  if (standing.length === 0) {
+    const rest = state.inPlay.filter((id) => !runoff.players.includes(id));
+    return [close, ...settleAmong({ ...state, gameData: { ...state.gameData, runoff: '' } }, rest)];
+  }
+
+  if (standing.length === 1) {
+    return [close, ...declareAlone(state, standing[0]!)];
+  }
+
+  const top = standing.reduce((high, entry) => Math.max(high, entry.stake), 0);
+  const tied = standing.filter((entry) => entry.stake === top).map((entry) => entry.playerId);
+  if (tied.length === 1) {
+    return [close, ...declareAlone(state, { playerId: tied[0]!, stake: top })];
+  }
+
+  // Still level. At the ceiling between opponents the dealing rule settles it;
+  // otherwise they are asked again, which between partners is a question with
+  // no end but the one they agree on.
+  if (top >= MAX_STAKE && !oneSided(state, tied)) {
+    const dealer = dealerOf(state);
+    const challengers = dealer ? tied.filter((id) => !sameSide(state, id, dealer)) : [];
+    if (challengers.length === 1) {
+      return [close, ...declareAlone(state, { playerId: challengers[0]!, stake: top })];
+    }
+    if (challengers.length > 1) return [close, ...openRunoff(state, challengers, top)];
+  }
+
+  return [close, ...openRunoff(state, tied, top)];
 }
 
 // --- the ledger ------------------------------------------------------------
@@ -538,7 +671,9 @@ export const laddis: Ruleset = {
       'Four players in fixed pairs, partners across the table. Thirty-two cards — ace down to seven, ace high.',
       'Four cards each to start. Anybody may declare वख्खै on them; if nobody does, a trump is set and four more cards go out for a hand of eight tricks.',
       'If everybody passes, the player to the dealer\'s right sets one of their own cards face down. Its suit is trump and they alone know it.',
-      'Nothing is a trump until the card is turned up. Anybody who cannot follow suit may ask for it on their turn — and cards of that suit played earlier in the hand were never trumps.',
+      'Nothing is a trump until the card is turned up. Anybody who cannot follow suit may ask for it on their turn, and from that moment the suit is trump — including for the cards already lying in the trick it was turned up in.',
+      'Tricks already gathered are not reopened. They were won under what the table knew at the time.',
+      'Four 7s is the four worst cards in the pack at once. Whoever is dealt them may throw the hand in, and the cards go back for a fresh deal with nothing scored.',
       'The dealers need four of the eight tricks; the other side needs five. Four and five out of eight means one side always gets there, so the hand ends the moment either does.',
       'The non-dealers getting there posts 5 onto the dealers. The dealers getting there posts 10 onto the non-dealers, settling against whatever they were carrying first.',
       'Whoever is carrying points deals. Land on nothing and the same side deals again; within a side the deal crosses to the partner every thirty-two points.',
@@ -578,6 +713,31 @@ export const laddis: Ruleset = {
     const bidder = nextBidder(state);
     if (!bidder) return null;
 
+    const runoff = runoffOf(state);
+    const stakes = openTo(state, runoff);
+
+    if (runoff) {
+      const others = runoff.players.filter((id) => id !== bidder);
+      const names = nameList(state, others);
+      const partners = oneSided(state, runoff.players);
+      const capped = stakes.length === 1 && stakes[0] === runoff.stake;
+
+      return {
+        bidder,
+        prompt: partners
+          ? `You and ${names} have both declared ${runoff.stake}. One of you has to give way — there is no outbidding your own partner.`
+          : capped
+            ? `You and ${names} are at ${runoff.stake}, which is as high as it goes. Hold, and it goes to whichever side is not dealing.`
+            : `${names} will not give way at ${runoff.stake}. Say more, or stand down.`,
+        standing: `वख्खै for ${runoff.stake} — ${nameList(state, [bidder, ...others])}`,
+        stakes,
+        stakePrefix: STAKE_PREFIX,
+        declareLabel: partners || capped ? 'Keep it' : 'Raise to',
+        passOption: PASS_BID,
+        passLabel: partners ? 'Let them have it' : 'Stand down',
+      };
+    }
+
     const standing = standingStake(state);
     const held = state.inPlay.find((id) => bidOf(state, id) === standing && standing > 0) ?? null;
 
@@ -588,11 +748,37 @@ export const laddis: Ruleset = {
           ? `${nameOf(state, held)} will take the hand on alone for ${standing}. Say more, or pass.`
           : 'Four cards. Declare वख्खै to play this hand alone against both opponents — or pass, and let a trump be set.',
       standing: standing > 0 ? `${nameOf(state, held)} — वख्खै for ${standing}` : null,
-      stakes: stakeLadder(standing),
+      stakes,
       stakePrefix: STAKE_PREFIX,
       declareLabel: 'Declare वख्खै',
       passOption: PASS_BID,
       passLabel: 'Pass',
+    };
+  },
+
+  /**
+   * All four sevens, which is a hand nobody should have to play.
+   *
+   * The sevens are the bottom of this pack -- there is nothing below them --
+   * so holding every one of them is holding the four worst cards in the game
+   * at once. Offered while the hand is still untouched: through the bidding,
+   * through the trump being set, and up until the first card is played. It
+   * can become true at either half of the deal, so it is asked rather than
+   * announced once.
+   */
+  redealClaim(state: GameState, playerId: PlayerId): { prompt: string; said: string } | null {
+    if (state.phase !== 'playing') return null;
+    // Once a card is down the hand has started and the moment has passed.
+    if (tricksPlayed(state) > 0 || trickCards(state).length > 0) return null;
+
+    const hand = handCards(state, playerId);
+    const sevens = hand.filter((id) => state.cards[id]?.face?.rank === '7').length;
+    if (sevens < SUITS_IN_PACK) return null;
+
+    const name = state.players[playerId]?.name ?? 'A player';
+    return {
+      prompt: 'You have four 7s, would you like to redeal?',
+      said: `${name} had all four 7s — dealing again`,
     };
   },
 
@@ -788,7 +974,9 @@ export const laddis: Ruleset = {
         if (intent.option === PASS_BID) return ALLOW;
         const stake = parseStake(intent.option);
         if (stake === null) return { ok: false, reason: 'declare a stake, or pass' };
-        if (!stakeLadder(standingStake(state)).includes(stake)) {
+        // Judged against what this player is actually being offered, which in
+        // a run-off is narrower than the whole ladder.
+        if (!openTo(state, runoffOf(state)).includes(stake)) {
           return { ok: false, reason: `stakes go in ${STAKE_STEP}s, as high as ${MAX_STAKE}` };
         }
         return ALLOW;
@@ -881,16 +1069,18 @@ export const laddis: Ruleset = {
     if (at === 'bidding') {
       if (event.type === 'chosen') {
         const stake = event.option === PASS_BID ? 0 : (parseStake(event.option) ?? 0);
-        return [{ type: 'gameDataSet', key: `bid:${event.by}`, value: stake }];
+        return [{ type: 'gameDataSet', key: answerKey(event.by, runoffOf(state)), value: stake }];
       }
 
-      if (event.type === 'gameDataSet' && event.key.startsWith('bid:')) {
-        if (nextBidder(state) !== null) return [];
-        const won = auctionWinner(state);
-        return won ? declareAlone(state, won) : [{ type: 'gameDataSet', key: 'stage', value: 'calling' }];
-      }
+      // Only the answers move things on. The keys that describe the run-off
+      // itself are written by the settling below, and reacting to those would
+      // settle the same round over and over.
+      if (event.type !== 'gameDataSet') return [];
+      if (!event.key.startsWith('bid:') && !event.key.startsWith('say')) return [];
+      if (nextBidder(state) !== null) return [];
 
-      return [];
+      const runoff = runoffOf(state);
+      return runoff ? settleRunoff(state, runoff) : settleAmong(state, state.inPlay);
     }
 
     // --- the trump, set aside ---------------------------------------------
@@ -966,14 +1156,7 @@ export const laddis: Ruleset = {
     // Everyone has played: the trick is decided, and the cards stay where they
     // are until its winner takes them.
     if (inTrick.length === size) {
-      const winner = trickWinner(
-        state,
-        inTrick,
-        player,
-        turns,
-        revealedTrump(state),
-        trumpedAt(state),
-      );
+      const winner = trickWinner(state, inTrick, player, turns, revealedTrump(state));
       return winner ? [{ type: 'turnSet', playerId: winner }] : [];
     }
 
@@ -1106,8 +1289,6 @@ function revealTrump(state: GameState): EventBody[] {
   const at = state.zones[hand]?.cards.length ?? 0;
 
   return [
-    { type: 'gameDataSet', key: 'revealTrick', value: tricksPlayed(state) },
-    { type: 'gameDataSet', key: 'revealAt', value: trickCards(state).length },
     // Which card it was. Written only now, when the suit becomes public
     // anyway -- `gameData` is readable by every client, so naming the card
     // while it was still face down would have given the whole thing away.

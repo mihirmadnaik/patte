@@ -311,6 +311,11 @@ export class Connection {
         store.toast(`${name} took a look at a card`);
       }
 
+      // Anything said out loud to the table. Declarations are the engine's
+      // channel for exactly this -- a call, a bid, a hand thrown in -- and
+      // they were being written down and shown to nobody.
+      if (event.type === 'declared') store.declare(event.text);
+
       // Whatever the game itself wants said. Asked of the ruleset rather than
       // worked out here: which events matter, and how they read, is the
       // game's business, not the transport's.

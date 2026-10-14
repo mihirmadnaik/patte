@@ -54,12 +54,44 @@ export function GamePanel({
 }): React.JSX.Element | null {
   const ruleset = getRuleset(state.rulesetId);
   const [rounds, setRounds] = useState(state.match.rounds);
+  // A hand you are entitled to throw in is an offer, not an order: waved away
+  // once, it stays away rather than reappearing on every re-render.
+  const [waved, setWaved] = useState<string | null>(null);
 
   // A redeal somebody has asked for outranks everything else on screen: the
   // hand is on hold until it is answered, and the person being waited on is
   // the only one who can move things along.
   if (state.redeal) {
     return <RedealRequest state={state} you={you} net={net} />;
+  }
+
+  // A hand the rules say you need not play. Before everything else, because
+  // it is about whether this deal should go ahead at all.
+  const claim = state.phase === 'playing' ? (ruleset.redealClaim?.(state, you) ?? null) : null;
+  if (claim && waved !== claim.prompt) {
+    return (
+      <div className="panel panel--soft">
+        <div className="panel__card">
+          <h2>{claim.prompt}</h2>
+          <p>
+            The cards go back and this hand is dealt again. Nothing is scored, and the deal stays
+            where it is.
+          </p>
+          <div className="panel__actions">
+            <button
+              className="primary"
+              onClick={() => {
+                net.submit({ type: 'claimRedeal' });
+                sounds.slide();
+              }}
+            >
+              Deal again
+            </button>
+            <button onClick={() => setWaved(claim.prompt)}>Play it</button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // A game can pause mid-deal for a decision: both trick games do, and a third
@@ -564,7 +596,7 @@ function Auction({
 
         {yours && (
           <p className="panel__hint">
-            Pass, and your side must take {yours.quota} of the tricks.
+            Leave it, and your side must take {yours.quota} of the tricks.
           </p>
         )}
       </div>

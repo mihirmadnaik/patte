@@ -256,6 +256,7 @@ describe('the table-level intents', () => {
     { type: 'startGame' },
     { type: 'proposeRedeal' },
     { type: 'answerRedeal', agree: true },
+    { type: 'claimRedeal' },
     { type: 'setMatchRounds', rounds: 2 },
     { type: 'endMatch' },
     { type: 'declare', text: 'hello' },

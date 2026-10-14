@@ -54,6 +54,16 @@ export type Intent =
   | ({ type: 'proposeRedeal'; reset?: boolean })
   /** Answer a redeal somebody has asked for. The asker may answer to cancel. */
   | ({ type: 'answerRedeal'; agree: boolean })
+  /**
+   * Take a fresh deal the rules of the game entitle you to, without asking.
+   *
+   * Distinct from `proposeRedeal`, which needs everybody's consent because
+   * whoever asks has seen their cards and could otherwise keep dealing until
+   * one suited them. Here the hand itself is the reason -- all four sevens in
+   * लॅडीस -- so the table has nothing to weigh up, and the ruleset decides
+   * whether the claim is real.
+   */
+  | ({ type: 'claimRedeal' })
   /** Change how many rounds the match runs to. */
   | ({ type: 'setMatchRounds'; rounds: number })
   /** Stop here. A round in progress is abandoned rather than scored. */
@@ -100,6 +110,7 @@ export const TABLE_INTENTS: readonly Intent['type'][] = [
   'startGame',
   'proposeRedeal',
   'answerRedeal',
+  'claimRedeal',
   'setMatchRounds',
   'endMatch',
   'declare',

@@ -217,21 +217,23 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
     // costs a band of table on every screen and buys nothing, so it goes --
     // and the rows and stacks spread into the room it was using.
     //
-    // A hand you *can* read is a different thing entirely: in a sandbox with
-    // open hands those faces are the whole point, so they stay and fan
-    // normally.
-    //
-    // Every card, not any card. लॅडीस turns one card of the caller's hand face
-    // up -- the trump, once somebody has asked for it -- and on "any" that one
-    // known card brought the whole fan of backs back onto the table, eating a
-    // band of it to show four cards nobody can read.
-    if (
-      zone.kind === 'hand' &&
-      !isMine &&
-      !(zone.cards.length > 0 && zone.cards.every((id) => state.cards[id]?.face))
-    ) {
-      continue;
-    }
+    /*
+     * A hand you *can* read is a different thing entirely: in a sandbox with
+     * open hands those faces are the whole point, so they stay and fan
+     * normally.
+     *
+     * Which hands those are is a table option and nothing else. Asking
+     * instead whether we happen to hold a face for every card in the hand
+     * gets it right almost always and then quietly leaks: in लॅडीस the trump
+     * goes back into the caller's hand once it has been turned up, known to
+     * everybody because everybody watched it happen -- and when the caller is
+     * down to that one card, "every card is one I can see" becomes true and
+     * their last card is laid out on the table for the whole room.
+     *
+     * Knowing the card is right; it was shown. Being shown it again, in their
+     * hand, for the rest of the hand, is not.
+     */
+    if (zone.kind === 'hand' && !isMine && state.options.handsArePrivate) continue;
     const origin = zoneOrigin(zone.id);
 
     const forZone = placementsFor(

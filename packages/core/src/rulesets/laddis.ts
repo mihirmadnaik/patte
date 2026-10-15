@@ -109,9 +109,14 @@ const CHALLENGER_QUOTA = 5;
 const DEALER_POSTS = 10;
 const CHALLENGER_POSTS = 5;
 
-/** Stakes are named in eights, as high as thirty-two. */
-const STAKE_STEP = 8;
-const MAX_STAKE = 32;
+/**
+ * The stakes there are: eight, sixteen, thirty-two.
+ *
+ * A doubling rather than a count of eights -- twenty-four is not a figure
+ * anybody calls. Written out rather than generated, because it is a list of
+ * what may be said and not a sequence that happens to have three terms in it.
+ */
+const STAKES: readonly number[] = [8, 16, 32];
 /**
  * Every thirty-two points the deal crosses to the partner.
  *
@@ -391,28 +396,31 @@ function parseStake(option: string): number | null {
   return stake;
 }
 
-/** Eights from `floor` up to the ceiling. */
+/** The stakes at or above `floor`. */
 function stakeLadder(floor: number): number[] {
-  const stakes: number[] = [];
-  for (let stake = Math.max(STAKE_STEP, floor); stake <= MAX_STAKE; stake += STAKE_STEP) {
-    stakes.push(stake);
-  }
-  return stakes;
+  return STAKES.filter((stake) => stake >= floor);
+}
+
+/** The next stake up from this one, or null at the top. */
+function above(stake: number): number | null {
+  return STAKES.find((candidate) => candidate > stake) ?? null;
 }
 
 /**
  * What the player being asked may say.
  *
  * In the opening circuit, any stake from the standing one upwards, or pass.
- * In a run-off between partners the stake is fixed and the only question is
- * who yields. In a run-off between opponents they must outbid or drop out --
- * unless the stake is already at the ceiling, where holding is all that is
- * left and the tie is broken by who is dealing.
+ * In a run-off, the stake they are tied at and anything above it -- standing
+ * on what you already said is an answer, and for partners it is the only one
+ * there is, since you cannot sensibly outbid your own partner.
+ *
+ * Keeping it had been left out, which left a player who thought their
+ * opponent was about to drop it with nothing to say but a raise they did not
+ * want to make.
  */
 function openTo(state: GameState, runoff: Runoff | null): number[] {
   if (!runoff) return stakeLadder(standingStake(state));
-  if (oneSided(state, runoff.players)) return [runoff.stake];
-  return runoff.stake >= MAX_STAKE ? [MAX_STAKE] : stakeLadder(runoff.stake + STAKE_STEP);
+  return oneSided(state, runoff.players) ? [runoff.stake] : stakeLadder(runoff.stake);
 }
 
 // --- settling it -----------------------------------------------------------
@@ -421,27 +429,17 @@ function openTo(state: GameState, runoff: Runoff | null): number[] {
  * Who has won the bidding among these players, or what to ask next.
  *
  * The highest stake takes it. Several at the highest is not a tie to be
- * broken but a question to be put back to them, except at the ceiling, where
- * opponents have nothing left to say to each other and the hand goes to the
- * side that is not dealing.
+ * broken but a question to be put back to them -- every time, including at
+ * the ceiling, where standing down is still something a player might want to
+ * do even though raising is not.
  */
 function settleAmong(state: GameState, candidates: readonly PlayerId[]): EventBody[] {
   const live = candidates.filter((id) => (bidOf(state, id) ?? 0) > 0);
   const top = live.reduce((high, id) => Math.max(high, bidOf(state, id) ?? 0), 0);
   if (top === 0) return [{ type: 'gameDataSet', key: 'stage', value: 'calling' }];
 
-  let tied = live.filter((id) => bidOf(state, id) === top);
+  const tied = live.filter((id) => bidOf(state, id) === top);
   if (tied.length === 1) return declareAlone(state, { playerId: tied[0]!, stake: top });
-
-  // At the ceiling there is no raising left, so the standing rule applies:
-  // the side not dealing is the side the points are being aimed at.
-  if (top >= MAX_STAKE && !oneSided(state, tied)) {
-    const dealer = dealerOf(state);
-    const challengers = dealer ? tied.filter((id) => !sameSide(state, id, dealer)) : [];
-    if (challengers.length === 1) return declareAlone(state, { playerId: challengers[0]!, stake: top });
-    if (challengers.length > 1) tied = challengers;
-  }
-
   return openRunoff(state, tied, top);
 }
 
@@ -489,10 +487,17 @@ function settleRunoff(state: GameState, runoff: Runoff): EventBody[] {
     return [close, ...declareAlone(state, { playerId: tied[0]!, stake: top })];
   }
 
-  // Still level. At the ceiling between opponents the dealing rule settles it;
-  // otherwise they are asked again, which between partners is a question with
-  // no end but the one they agree on.
-  if (top >= MAX_STAKE && !oneSided(state, tied)) {
+  /*
+   * Still level. If nobody raised, the two of them are simply holding, and
+   * asking again will get the same answer -- which between opponents is the
+   * deadlock the dealing rule exists for: the side not dealing is the side
+   * the points are aimed at, so the hand is theirs. At the ceiling this is
+   * the only thing that *can* happen, since there is nothing to raise to.
+   *
+   * Between partners it is left alone. They are not competing, they are
+   * failing to agree, and nothing starts until one of them gives way.
+   */
+  if (top <= runoff.stake && !oneSided(state, tied)) {
     const dealer = dealerOf(state);
     const challengers = dealer ? tied.filter((id) => !sameSide(state, id, dealer)) : [];
     if (challengers.length === 1) {
@@ -677,7 +682,7 @@ export const laddis: Ruleset = {
       'The dealers need four of the eight tricks; the other side needs five. Four and five out of eight means one side always gets there, so the hand ends the moment either does.',
       'The non-dealers getting there posts 5 onto the dealers. The dealers getting there posts 10 onto the non-dealers, settling against whatever they were carrying first.',
       'Whoever is carrying points deals. Land on nothing and the same side deals again; within a side the deal crosses to the partner every thirty-two points.',
-      'वख्खै is a hand taken on alone: your partner\'s cards are withdrawn, three of you play four tricks with no trump, and you must win every one. Name your stake in eights — win and it goes on them, lose and double goes on you.',
+      'वख्खै is a hand taken on alone: your partner\'s cards are withdrawn, three of you play four tricks with no trump, and you must win every one. Name your stake — 8, 16 or 32 — and win and it goes on them, lose and double goes on you.',
     ],
   },
   // No passing: you always hold something you are allowed to play.
@@ -720,19 +725,21 @@ export const laddis: Ruleset = {
       const others = runoff.players.filter((id) => id !== bidder);
       const names = nameList(state, others);
       const partners = oneSided(state, runoff.players);
-      const capped = stakes.length === 1 && stakes[0] === runoff.stake;
+      const capped = above(runoff.stake) === null;
 
       return {
         bidder,
         prompt: partners
           ? `You and ${names} have both declared ${runoff.stake}. One of you has to give way — there is no outbidding your own partner.`
           : capped
-            ? `You and ${names} are at ${runoff.stake}, which is as high as it goes. Hold, and it goes to whichever side is not dealing.`
-            : `${names} will not give way at ${runoff.stake}. Say more, or stand down.`,
+            ? `You and ${names} are at ${runoff.stake}, which is as high as it goes. Keep it and stay level, and the hand goes to whichever side is not dealing.`
+            : `${names} will not give way at ${runoff.stake}. Keep yours, say more, or stand down — and if you both keep it, the hand goes to whichever side is not dealing.`,
         standing: `वख्खै for ${runoff.stake} — ${nameList(state, [bidder, ...others])}`,
         stakes,
         stakePrefix: STAKE_PREFIX,
-        declareLabel: partners || capped ? 'Keep it' : 'Raise to',
+        declareLabel: 'Raise to',
+        // Saying the same number again is standing your ground, not bidding.
+        hold: { stake: runoff.stake, label: `Keep your ${runoff.stake}` },
         passOption: PASS_BID,
         passLabel: partners ? 'Let them have it' : 'Stand down',
       };
@@ -977,7 +984,7 @@ export const laddis: Ruleset = {
         // Judged against what this player is actually being offered, which in
         // a run-off is narrower than the whole ladder.
         if (!openTo(state, runoffOf(state)).includes(stake)) {
-          return { ok: false, reason: `stakes go in ${STAKE_STEP}s, as high as ${MAX_STAKE}` };
+          return { ok: false, reason: `the stakes are ${STAKES.join(', ')}` };
         }
         return ALLOW;
       }

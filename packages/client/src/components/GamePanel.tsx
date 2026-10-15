@@ -579,7 +579,12 @@ function Auction({
                     sounds.slide();
                   }}
                 >
-                  {call.declareLabel} · {stake}
+                  {/* Standing on what you already said is a different act
+                      from saying a bigger number, and the button says which
+                      one it is. */}
+                  {call.hold && stake === call.hold.stake
+                    ? call.hold.label
+                    : `${call.declareLabel} · ${stake}`}
                 </button>
               )}
               <button

@@ -81,6 +81,15 @@ export interface AuctionCall {
   stakePrefix: string;
   /** The word on the declaring button. */
   declareLabel: string;
+  /**
+   * The stake that means standing on what you already said, if one of the
+   * stakes on offer does.
+   *
+   * Saying the same number again is a different act from saying a bigger one,
+   * and the button has to read as what it does -- "Raise to 8" when 8 is what
+   * you already bid is nonsense.
+   */
+  hold?: { stake: number; label: string };
   /** The option to send for saying nothing. */
   passOption: string;
   /** The word on the pass button. */

@@ -186,13 +186,15 @@ describe('the auction', () => {
     expect(t.submit(other, { type: 'choose', option: PASS })).toMatchObject({ ok: false });
   });
 
-  it('offers stakes in eights and refuses anything else', () => {
+  it('offers three stakes and refuses anything else', () => {
     const t = dealt();
     const bidder = laddis.auction!(t.state)!.bidder;
-    expect(laddis.auction!(t.state)!.stakes).toEqual([8, 16, 24, 32]);
-    expect(t.submit(bidder, { type: 'choose', option: 'vakkhai:12' })).toMatchObject({ ok: false });
-    // Thirty-two is the ceiling, so the next rung up is not on offer at all.
-    expect(t.submit(bidder, { type: 'choose', option: 'vakkhai:40' })).toMatchObject({ ok: false });
+    // A doubling, not a count of eights: twenty-four is not a figure anybody
+    // calls, so it is not on the ladder at all.
+    expect(laddis.auction!(t.state)!.stakes).toEqual([8, 16, 32]);
+    for (const refused of ['vakkhai:12', 'vakkhai:24', 'vakkhai:40']) {
+      expect(t.submit(bidder, { type: 'choose', option: refused }), refused).toMatchObject({ ok: false });
+    }
   });
 
   it('will not go below the standing declaration', () => {
@@ -208,11 +210,11 @@ describe('the auction', () => {
     const t = dealt();
     const [first, second, third, fourth] = t.state.inPlay;
     say(t, first!, 'vakkhai:8');
-    say(t, second!, 'vakkhai:24');
+    say(t, second!, 'vakkhai:32');
     say(t, third!, PASS);
     say(t, fourth!, PASS);
     expect(t.state.gameData['vakkhai']).toBe(second);
-    expect(t.state.gameData['stake']).toBe(24);
+    expect(t.state.gameData['stake']).toBe(32);
   });
 
   it('does not hand a tie to anybody — it asks them again', () => {
@@ -243,13 +245,70 @@ describe('the auction', () => {
 
     const call = laddis.auction!(t.state)!;
     expect(call.bidder).toBe(first);
-    // Holding at the same number is not on offer: they must go higher or go.
-    expect(call.stakes).toEqual([16, 24, 32]);
+    // Keeping what you already said is one of the answers, so the ladder
+    // starts at the stake they are tied at rather than above it.
+    expect(call.stakes).toEqual([8, 16, 32]);
+    expect(call.hold).toEqual({ stake: 8, label: 'Keep your 8' });
     expect(call.passLabel).toBe('Stand down');
 
     say(t, first!, 'vakkhai:16');
     say(t, second!, PASS);
     expect(t.state.gameData['vakkhai']).toBe(first);
+    expect(t.state.gameData['stake']).toBe(16);
+  });
+
+  it('lets a player keep their bid and take it when the other stands down', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    const [first, second] = turns;
+    say(t, first!, 'vakkhai:8');
+    say(t, second!, 'vakkhai:8');
+    say(t, turns[2]!, PASS);
+    say(t, turns[3]!, PASS);
+
+    // The whole point of being able to keep it: you thought they would drop
+    // it, they did, and you play the hand for what you actually bid.
+    say(t, first!, 'vakkhai:8');
+    say(t, second!, PASS);
+    expect(t.state.gameData['vakkhai']).toBe(first);
+    expect(t.state.gameData['stake']).toBe(8);
+  });
+
+  it('gives a deadlock between opponents to the side that is not dealing', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    const dealer = turns.at(-1)!;
+    const challenger = turns[0]!;
+    expect(t.state.teams.some((team) => team.includes(dealer) && team.includes(challenger))).toBe(false);
+
+    say(t, challenger, 'vakkhai:8');
+    say(t, turns[1]!, PASS);
+    say(t, turns[2]!, PASS);
+    say(t, dealer, 'vakkhai:8');
+
+    // Neither raises and neither stands down. Asking again would get the same
+    // answer, so the one standing rule settles it.
+    say(t, challenger, 'vakkhai:8');
+    say(t, dealer, 'vakkhai:8');
+    expect(t.state.gameData['vakkhai']).toBe(challenger);
+    expect(t.state.gameData['stake']).toBe(8);
+  });
+
+  it('does not call it a deadlock while somebody is still raising', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    const dealer = turns.at(-1)!;
+    const challenger = turns[0]!;
+
+    say(t, challenger, 'vakkhai:8');
+    say(t, turns[1]!, PASS);
+    say(t, turns[2]!, PASS);
+    say(t, dealer, 'vakkhai:8');
+
+    // The dealer raises, so the hand is theirs -- the other only held.
+    say(t, challenger, 'vakkhai:8');
+    say(t, dealer, 'vakkhai:16');
+    expect(t.state.gameData['vakkhai']).toBe(dealer);
     expect(t.state.gameData['stake']).toBe(16);
   });
 
@@ -300,7 +359,7 @@ describe('the auction', () => {
     expect(t.state.gameData['vakkhai']).toBe(third);
   });
 
-  it('gives the ceiling to the side that is not dealing', () => {
+  it('still asks at the ceiling, where standing down is the only move left', () => {
     const t = dealt();
     const turns = t.state.inPlay;
     const dealer = turns.at(-1)!;
@@ -312,12 +371,33 @@ describe('the auction', () => {
     say(t, turns[2]!, PASS);
     say(t, dealer, 'vakkhai:32');
 
-    // Settled on the spot. A run-off asks people to outbid each other, and at
-    // the ceiling there is nothing to ask -- so the standing rule decides it
-    // rather than putting a question neither of them can answer.
-    expect(laddis.auction!(t.state)).toBeNull();
+    // Nothing to raise to, but giving way is still something a player might
+    // want to do, so the question is put rather than assumed.
+    const call = laddis.auction!(t.state)!;
+    expect(call.stakes).toEqual([32]);
+    expect(call.hold).toEqual({ stake: 32, label: 'Keep your 32' });
+
+    say(t, challenger, 'vakkhai:32');
+    say(t, dealer, 'vakkhai:32');
     expect(t.state.gameData['vakkhai']).toBe(challenger);
     expect(t.state.gameData['stake']).toBe(32);
+  });
+
+  it('lets the dealing side take the ceiling when the other gives way', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    const dealer = turns.at(-1)!;
+    const challenger = turns[0]!;
+
+    say(t, challenger, 'vakkhai:32');
+    say(t, turns[1]!, PASS);
+    say(t, turns[2]!, PASS);
+    say(t, dealer, 'vakkhai:32');
+
+    // The rule is a tie-break, not a gift: stand down and it is theirs.
+    say(t, challenger, PASS);
+    say(t, dealer, 'vakkhai:32');
+    expect(t.state.gameData['vakkhai']).toBe(dealer);
   });
 
   it('falls back to the bid underneath when everybody in a run-off gives way', () => {

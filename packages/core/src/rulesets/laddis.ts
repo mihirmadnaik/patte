@@ -371,6 +371,19 @@ function answerOf(state: GameState, playerId: PlayerId, runoff: Runoff | null): 
   return typeof value === 'number' ? value : null;
 }
 
+/**
+ * The figure this player is standing on as a round opens.
+ *
+ * Their answer to the round before, or their opening declaration if this is
+ * the first run-off. It tells holding apart from matching: when somebody has
+ * raised over you, saying the new figure is coming up to meet it, not
+ * standing your ground, and the button should not claim otherwise.
+ */
+function figureFor(state: GameState, runoff: Runoff, playerId: PlayerId): number {
+  const previous = runoff.round > 1 ? state.gameData[`say${runoff.round - 1}:${playerId}`] : undefined;
+  return typeof previous === 'number' ? previous : (bidOf(state, playerId) ?? 0);
+}
+
 /** The next player who owes an answer, in seating order. Null when all have. */
 function nextBidder(state: GameState): PlayerId | null {
   const runoff = runoffOf(state);
@@ -482,14 +495,27 @@ function settleRunoff(state: GameState, runoff: Runoff): EventBody[] {
   }
 
   const top = standing.reduce((high, entry) => Math.max(high, entry.stake), 0);
-  const tied = standing.filter((entry) => entry.stake === top).map((entry) => entry.playerId);
-  if (tied.length === 1) {
-    return [close, ...declareAlone(state, { playerId: tied[0]!, stake: top })];
+
+  /*
+   * Somebody bettered the figure the round was called at.
+   *
+   * A raise is not a win; it is something the others have to answer. The
+   * highest bidder used to take the hand on the spot, which meant a player
+   * who had just said "I'll keep my 8" never got to hear that their opponent
+   * had gone to 16, let alone come back over the top of it. So the question
+   * is put again at the new figure, to everybody still in -- the raiser
+   * included, who may now think better of it.
+   *
+   * This is what ends the auction: each round either lifts the figure, which
+   * the ladder bounds, or loses a player, or finds nobody willing to move.
+   */
+  if (top > runoff.stake) {
+    return [close, ...openRunoff(state, standing.map((entry) => entry.playerId), top)];
   }
 
   /*
-   * Still level. If nobody raised, the two of them are simply holding, and
-   * asking again will get the same answer -- which between opponents is the
+   * Nobody moved. Everybody still in is holding the same figure, and asking
+   * again would get the same answer -- which between opponents is the
    * deadlock the dealing rule exists for: the side not dealing is the side
    * the points are aimed at, so the hand is theirs. At the ceiling this is
    * the only thing that *can* happen, since there is nothing to raise to.
@@ -497,7 +523,8 @@ function settleRunoff(state: GameState, runoff: Runoff): EventBody[] {
    * Between partners it is left alone. They are not competing, they are
    * failing to agree, and nothing starts until one of them gives way.
    */
-  if (top <= runoff.stake && !oneSided(state, tied)) {
+  const tied = standing.map((entry) => entry.playerId);
+  if (!oneSided(state, tied)) {
     const dealer = dealerOf(state);
     const challengers = dealer ? tied.filter((id) => !sameSide(state, id, dealer)) : [];
     if (challengers.length === 1) {
@@ -726,20 +753,32 @@ export const laddis: Ruleset = {
       const names = nameList(state, others);
       const partners = oneSided(state, runoff.players);
       const capped = above(runoff.stake) === null;
+      // Level with them, or coming up to meet a raise somebody has made.
+      const level = figureFor(state, runoff, bidder) >= runoff.stake;
+
+      const prompt = partners
+        ? `You and ${names} have both declared ${runoff.stake}. One of you has to give way — there is no outbidding your own partner.`
+        : !level
+          ? capped
+            ? `${names} has gone to ${runoff.stake}, which is as high as it goes. Match it, or stand down.`
+            : `${names} has gone to ${runoff.stake}. Match it, go higher, or stand down.`
+          : capped
+            ? `You and ${names} are at ${runoff.stake}, which is as high as it goes. Stay level and the hand goes to whichever side is not dealing.`
+            : `${names} will not give way at ${runoff.stake}. Keep yours, say more, or stand down — and if nobody moves, the hand goes to whichever side is not dealing.`;
 
       return {
         bidder,
-        prompt: partners
-          ? `You and ${names} have both declared ${runoff.stake}. One of you has to give way — there is no outbidding your own partner.`
-          : capped
-            ? `You and ${names} are at ${runoff.stake}, which is as high as it goes. Keep it and stay level, and the hand goes to whichever side is not dealing.`
-            : `${names} will not give way at ${runoff.stake}. Keep yours, say more, or stand down — and if you both keep it, the hand goes to whichever side is not dealing.`,
+        prompt,
         standing: `वख्खै for ${runoff.stake} — ${nameList(state, [bidder, ...others])}`,
         stakes,
         stakePrefix: STAKE_PREFIX,
         declareLabel: 'Raise to',
-        // Saying the same number again is standing your ground, not bidding.
-        hold: { stake: runoff.stake, label: `Keep your ${runoff.stake}` },
+        // Saying the round's figure is standing your ground, or coming up to
+        // meet it. Either way it is not a bid, and the button says which.
+        hold: {
+          stake: runoff.stake,
+          label: level ? `Keep your ${runoff.stake}` : `Match their ${runoff.stake}`,
+        },
         passOption: PASS_BID,
         passLabel: partners ? 'Let them have it' : 'Stand down',
       };

@@ -294,7 +294,12 @@ describe('the auction', () => {
     expect(t.state.gameData['stake']).toBe(8);
   });
 
-  it('does not call it a deadlock while somebody is still raising', () => {
+  it('lets a raise be answered instead of ending it', () => {
+    /*
+     * The thing an auction is for. One player holds, the other goes over the
+     * top of them -- and the first has to be able to hear that and come back,
+     * rather than losing the hand to a number they never got to answer.
+     */
     const t = dealt();
     const turns = t.state.inPlay;
     const dealer = turns.at(-1)!;
@@ -305,10 +310,48 @@ describe('the auction', () => {
     say(t, turns[2]!, PASS);
     say(t, dealer, 'vakkhai:8');
 
-    // The dealer raises, so the hand is theirs -- the other only held.
     say(t, challenger, 'vakkhai:8');
     say(t, dealer, 'vakkhai:16');
-    expect(t.state.gameData['vakkhai']).toBe(dealer);
+
+    // Nobody has it yet: the sixteen is now the question.
+    expect(t.state.gameData['vakkhai']).toBeUndefined();
+    const call = laddis.auction!(t.state)!;
+    expect(call.bidder).toBe(challenger);
+    expect(call.stakes).toEqual([16, 32]);
+    // They are coming up to meet it, not standing on something of their own.
+    expect(call.hold).toEqual({ stake: 16, label: 'Match their 16' });
+    expect(call.prompt).toContain('has gone to 16');
+
+    // And can go over the top of it.
+    say(t, challenger, 'vakkhai:32');
+    say(t, dealer, PASS);
+    expect(t.state.gameData['vakkhai']).toBe(challenger);
+    expect(t.state.gameData['stake']).toBe(32);
+  });
+
+  it('asks the raiser again too, so they may think better of it', () => {
+    const t = dealt();
+    const turns = t.state.inPlay;
+    const dealer = turns.at(-1)!;
+    const challenger = turns[0]!;
+
+    say(t, challenger, 'vakkhai:8');
+    say(t, turns[1]!, PASS);
+    say(t, turns[2]!, PASS);
+    say(t, dealer, 'vakkhai:8');
+
+    say(t, challenger, 'vakkhai:8');
+    say(t, dealer, 'vakkhai:16');
+
+    // The one who raised is in the new round as well, holding their own
+    // figure -- and standing down at this point hands it to whoever matches.
+    expect(laddis.auction!(t.state)!.bidder).toBe(challenger);
+    say(t, challenger, 'vakkhai:16');
+    expect(laddis.auction!(t.state)!.bidder).toBe(dealer);
+    expect(laddis.auction!(t.state)!.hold).toEqual({ stake: 16, label: 'Keep your 16' });
+    say(t, dealer, PASS);
+
+    expect(t.state.gameData['vakkhai']).toBe(challenger);
     expect(t.state.gameData['stake']).toBe(16);
   });
 
@@ -430,6 +473,47 @@ describe('the auction', () => {
 
     expect(t.state.gameData['vakkhai']).toBeUndefined();
     expect(stage(t.state)).toBe('calling');
+  });
+
+  it('always reaches an answer, however the table bids', () => {
+    /*
+     * The auction is the one part of this game that can ask the same question
+     * twice, so the thing worth proving is that it stops. Each round either
+     * lifts the figure -- which the ladder bounds -- or loses a player, or
+     * finds nobody willing to move, and the last of those is settled by the
+     * dealing rule unless the holdouts are partners, who are left to it.
+     *
+     * Driven with arbitrary legal answers rather than chosen ones, because
+     * the orderings that go wrong are the ones nobody thinks to write down.
+     */
+    for (let seed = 1; seed <= 60; seed++) {
+      const t = dealt(seed);
+      const rng = makeRng(seed * 7 + 1);
+
+      let steps = 0;
+      for (; steps < 200; steps++) {
+        const call = laddis.auction!(t.state);
+        if (!call) break;
+        // Pass often enough that two partners holding out forever -- which is
+        // the rule, not a bug -- does not stall the run.
+        const roll = rng.next();
+        const option =
+          roll < 0.4 || call.stakes.length === 0
+            ? call.passOption
+            : `${call.stakePrefix}${call.stakes[Math.floor(rng.next() * call.stakes.length)]}`;
+        const said = t.submit(call.bidder, { type: 'choose', option });
+        if (!said.ok) throw new Error(`seed ${seed}: ${option} — ${said.reason}`);
+      }
+
+      expect(laddis.auction!(t.state), `seed ${seed} never settled`).toBeNull();
+      expect(steps, `seed ${seed} took too long`).toBeLessThan(200);
+      // Settled one way or the other: somebody has the hand, or a trump is
+      // being set.
+      const alone = t.state.gameData['vakkhai'];
+      expect(alone !== undefined || stage(t.state) === 'calling', `seed ${seed}`).toBe(true);
+      if (alone !== undefined) expect(stage(t.state)).toBe('playing');
+      expect(checkInvariants(t.state), `seed ${seed}`).toEqual([]);
+    }
   });
 
   it('takes table business at every stage, bidding included', () => {

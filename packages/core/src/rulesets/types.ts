@@ -56,6 +56,15 @@ export interface StandingsRow {
    * the row is keyed on; this is who it covers, and the strip names them all.
    */
   team?: PlayerId[];
+  /**
+   * Whether the quota must be hit exactly rather than reached.
+   *
+   * Every other game here counts up to a quota and is pleased to pass it. In
+   * जजमेंट the quota is what you called for yourself, and one trick over is
+   * as lost as one under -- so a strip that lit up at "reached" would be
+   * congratulating a player on having just failed.
+   */
+  exact?: boolean;
 }
 
 /**
@@ -82,6 +91,13 @@ export interface AuctionCall {
   /** The word on the declaring button. */
   declareLabel: string;
   /**
+   * What the number beside the stepper is, in a word.
+   *
+   * लॅडीस puts a stake on the table; जजमेंट calls a number of tricks and
+   * stakes nothing. Defaults to "Stake" where a game does not say.
+   */
+  stakeLabel?: string;
+  /**
    * The stake that means standing on what you already said, if one of the
    * stakes on offer does.
    *
@@ -90,10 +106,25 @@ export interface AuctionCall {
    * you already bid is nonsense.
    */
   hold?: { stake: number; label: string };
-  /** The option to send for saying nothing. */
-  passOption: string;
+  /**
+   * The option to send for saying nothing, where saying nothing is allowed.
+   *
+   * Omitted by an auction nobody may sit out: in जजमेंट every player must
+   * name a number of tricks, and nought is one of the numbers rather than a
+   * way of declining. Where it is absent the panel offers no pass at all.
+   */
+  passOption?: string;
   /** The word on the pass button. */
-  passLabel: string;
+  passLabel?: string;
+  /**
+   * A closing line under the panel, in the game's words.
+   *
+   * What saying nothing leaves you with, which is a different fact in every
+   * game that has an auction -- a quota your side is already carrying in
+   * लॅडीस, and in जजमेंट nothing at all, because there is no saying nothing.
+   * Omitted leaves the panel with no footer.
+   */
+  hint?: string;
 }
 
 /** Suits left to right, and ranks within a suit left to right. */
@@ -111,9 +142,9 @@ export interface SetupSpec {
   /**
    * Who is dealt in, **in turn order**.
    *
-   * Defaults to the seating. A game whose play does not travel the way people
+   * Defaults to the seating. A game whose play does not begin where people
    * happen to have sat down says so here -- पाच-तीन-दोन deals and plays from
-   * the dealer's right, and its quotas are read straight off this order, so
+   * the dealer's left, and its quotas are read straight off this order, so
    * the order is the game rather than an accident of who joined first.
    */
   inPlay?: PlayerId[];
@@ -124,6 +155,16 @@ export interface SetupSpec {
    * them but लॅडीस. The engine carries it and never acts on it.
    */
   teams?: PlayerId[][];
+  /**
+   * How many rounds this match is, where the rules decide rather than a
+   * person.
+   *
+   * जजमेंट deals one card fewer every round until it reaches one, so its
+   * length follows from how many people sat down -- four players get thirteen
+   * rounds and ten players get five. Omitted by every game whose match length
+   * is the table owner's to choose, which is all the others.
+   */
+  rounds?: number;
   /** Opening values for the ruleset's scratchpad -- stage, dealer, and such. */
   gameData?: Record<string, string | number | boolean>;
 }
@@ -276,6 +317,28 @@ export interface Ruleset {
   openEnded?: boolean;
 
   /**
+   * Whether the number of rounds is the rules' to decide rather than a choice.
+   *
+   * The opposite end of the same question as `openEnded`: that one has no last
+   * round, this one has a last round nobody gets to pick. जजमेंट shortens the
+   * hand by a card every round until it reaches one, so the length falls out
+   * of the seat count and asking for it would be asking a question with only
+   * one right answer. The match-length control stops being offered, and
+   * `SetupSpec.rounds` says what the length actually is.
+   */
+  fixedLength?: boolean;
+
+  /**
+   * What kind of match this will be, said in the lobby before the deal.
+   *
+   * Takes the number of people seated, because for some games that is what
+   * decides it: जजमेंट's ladder is `floor(52 / seats)` rungs long, and the
+   * match has no round count to read until the first hand is dealt. Omitted
+   * leaves the panel's own wording, which counts rounds.
+   */
+  lobbyNote?(seated: number): string | null;
+
+  /**
    * A fresh deal this player is entitled to, and why, in the game's words.
    *
    * For a hand the rules say nobody should have to play. Unlike asking the
@@ -321,7 +384,7 @@ export interface Ruleset {
    * The pill otherwise says as little as it can get away with, on the grounds
    * that a lit-up hand and a lit-up pill already say "your turn" without
    * words. That reasoning fails when the game wants something it has no other
-   * way to express: लॅडीस asks the player to its dealer's right to set a card
+   * way to express: लॅडीस asks the player to its dealer's left to set a card
    * aside as a trump nobody will see, and a hand of lit cards is not a way to
    * say that.
    *

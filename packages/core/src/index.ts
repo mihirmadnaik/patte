@@ -15,4 +15,5 @@ export * from './rulesets/sevens.js';
 export * from './rulesets/saat-aath.js';
 export * from './rulesets/pach-tin-don.js';
 export * from './rulesets/laddis.js';
+export * from './rulesets/judgement.js';
 export * from './rulesets/registry.js';

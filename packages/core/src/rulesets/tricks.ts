@@ -21,6 +21,17 @@ import type { Card, CardId, GameState, PlayerId, Point, Rank, Suit, Zone, ZoneId
  * a fifteen-trick game for two players and a ten-trick game for three.
  */
 export const SHORT_PACK_RANKING: readonly Rank[] = ['A', 'K', 'Q', 'J', '10', '9', '8', '7'] as const;
+/**
+ * Every rank, strongest first, ace high.
+ *
+ * The short pack is this same order with the tail cut off, so one ranking
+ * serves both -- a game that never deals a six is unaffected by knowing where
+ * a six would go. Comparison reads from here rather than from whichever pack
+ * is in use, because `beats` is handed two cards and no pack.
+ */
+export const FULL_PACK_RANKING: readonly Rank[] = [
+  'A', 'K', 'Q', 'J', '10', '9', '8', '7', '6', '5', '4', '3', '2',
+] as const;
 /** Every seven except the two the pack keeps. */
 export const DROPPED_SEVENS = ['C7', 'D7'] as const;
 /** The suits a caller may name, in the order they are offered. */
@@ -56,8 +67,8 @@ export function pileZoneId(playerId: PlayerId): ZoneId {
 
 /** Position in the ranking; lower is stronger. Ace is 0. */
 function rankOrder(rank: Rank): number {
-  const at = SHORT_PACK_RANKING.indexOf(rank);
-  return at === -1 ? SHORT_PACK_RANKING.length : at;
+  const at = FULL_PACK_RANKING.indexOf(rank);
+  return at === -1 ? FULL_PACK_RANKING.length : at;
 }
 
 /**

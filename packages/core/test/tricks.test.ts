@@ -36,6 +36,14 @@ describe('which card beats which', () => {
     ['DA', 'HQ', 'H', 'S', false], // off-suit and off-trump cannot win
     ['SA', 'SK', 'H', 'S', true], // two trumps: rank decides
     ['H7', 'HA', 'H', 'S', false], // the seven is an ordinary low card
+    // The full pack goes below the seven. These all compared equal while the
+    // ranking stopped at the seven, so a two could hold a six.
+    ['H3', 'H2', 'H', 'S', true],
+    ['H2', 'H3', 'H', 'S', false],
+    ['H7', 'H6', 'H', 'S', true],
+    ['H6', 'H7', 'H', 'S', false],
+    ['H2', 'HA', 'H', 'S', false],
+    ['S2', 'HA', 'H', 'S', true], // the lowest trump still beats the best off it
   ];
 
   for (const [challenger, leader, led, trump, expected] of cases) {
@@ -75,6 +83,15 @@ describe('who took the trick', () => {
     const cards = ['D9', 'DJ'];
     const state = tableOf(cards);
     expect(trickWinner(state, cards, 'ben', order, 'S')).toBe('ben');
+  });
+
+  it('decides a trumpless trick on the led suit alone', () => {
+    const order = ['ana', 'ben', 'cal'];
+    const cards = ['H4', 'SA', 'H5'];
+    const state = tableOf(cards);
+    // No trump: the ace of spades is off-suit and cannot win, so the five of
+    // hearts takes it over the four that led.
+    expect(trickWinner(state, cards, 'cal', order, null)).toBe('cal');
   });
 
   it('has no answer for a trick nobody could have played', () => {

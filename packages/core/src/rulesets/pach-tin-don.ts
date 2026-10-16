@@ -3,11 +3,11 @@
  *
  * Three players, the same thirty-card pack as सात-आठ, ten tricks, and three
  * complementary quotas that add up to exactly the number of tricks: the player
- * to the dealer's right must take five, the dealer's left three, and the
+ * to the dealer's left must take five, the dealer's right three, and the
  * dealer two. Known elsewhere as 2-3-5, 3-2-5 or teen do paanch.
  *
- * **The game is named after its own turn order.** The dealer's right leads,
- * then the dealer's left, then the dealer — five, three, two — so a single
+ * **The game is named after its own turn order.** The dealer's left leads,
+ * then the dealer's right, then the dealer — five, three, two — so a single
  * ordering of the players gives both who plays when and who owes what. That is
  * why `inPlay` is built in that order and the quotas are read off it by
  * position rather than tracked separately: two facts that must agree are
@@ -92,7 +92,7 @@ function order(state: GameState): PlayerId[] {
   return [...state.inPlay];
 }
 
-/** Whoever names trump and leads: the player to the dealer's right. */
+/** Whoever names trump and leads: the player to the dealer's left. */
 function callerOf(state: GameState): PlayerId | null {
   return state.inPlay[0] ?? null;
 }
@@ -117,10 +117,10 @@ function tricksStanding(state: GameState, playerId: PlayerId): number {
 /**
  * Seats to one side of the dealer.
  *
- * `seatOrder` runs one way round the table; "right" is the seat before and
- * "left" the seat after. Which of those is physically to anybody's right is
- * unknowable from here and does not matter — what matters is that the two are
- * opposite, consistent, and that the deal and the play travel the same way.
+ * `seatOrder` runs clockwise, and every client draws it that way with itself
+ * at the bottom -- so the seat after is the one on your left and the seat
+ * before is the one on your right. Every game here deals and plays to the
+ * left, which is the direction the published rules for all of them describe.
  */
 function rightOf(seats: readonly PlayerId[], playerId: PlayerId): PlayerId {
   const at = seats.indexOf(playerId);
@@ -177,7 +177,7 @@ export const pachTinDon: Ruleset = {
     rules: [
       'Thirty cards, three players, ten tricks. The same pack as सात-आठ: nothing below a seven, and only the seven of hearts and the seven of spades.',
       'Five cards are dealt to each of you. Trump is named. Only then are the other five dealt — so the call is made on half a hand, which is the whole difficulty of it.',
-      'The player to the dealer\'s right names trump, leads, and must take five. The dealer\'s left must take three. The dealer must take two.',
+      'The player to the dealer\'s left names trump, leads, and must take five. The dealer\'s right must take three. The dealer must take two.',
       'Follow the suit that was led if you can. The highest trump takes the trick; with no trump in it, the highest card of the suit led. Whoever wins it leads the next one.',
       'The quotas add up to ten exactly, so somebody beating theirs means somebody else missed. You score the difference either way, and it can be negative.',
       'The deal passes on each round, so the five, the three and the two move round the table with it.',
@@ -232,18 +232,18 @@ export const pachTinDon: Ruleset = {
   },
 
   setup({ players, rng, match, previous }: SetupContext): SetupSpec {
-    // The deal passes to the right every time cards go out. Taken from the
+    // The deal passes to the left every time cards go out. Taken from the
     // previous *deal* rather than from the number of scored rounds: those
     // differ whenever a round ends without a score, and reading the round
     // count hands the trump call back to whoever just made it.
     const last = typeof previous['dealer'] === 'string' ? previous['dealer'] : null;
     const dealer =
       (last && players.includes(last)
-        ? rightOf(players, last)
+        ? leftOf(players, last)
         : players[match.played.length % players.length]) ?? players[0]!;
 
     // Turn order is quota order: five, three, two.
-    const turns = [rightOf(players, dealer), leftOf(players, dealer), dealer];
+    const turns = [leftOf(players, dealer), rightOf(players, dealer), dealer];
 
     const zones: Zone[] = [trickZone(), stockZone()];
     for (const playerId of players) zones.push(handZone(playerId), pileZone(playerId));

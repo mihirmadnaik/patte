@@ -136,6 +136,15 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
   const usable = Math.max(bounds.height - statusBand, m.cardH * 2);
   const rows = stackTableRows(m, usable);
   const others = state.seatOrder.filter((id) => id !== you);
+  /*
+   * Too many seats for a name plate each at full size.
+   *
+   * जजमेंट seats ten, and ten plates along the top strip of a phone overlap
+   * and wrap. The plate loses its card count rather than its name: whose a
+   * card was is the thing the colours exist to answer, and how many cards
+   * somebody is holding is the same number for everybody until it is not.
+   */
+  const crowded = others.length > 6;
 
   const seatOf = useCallback(
     (playerId: string) => {
@@ -634,7 +643,7 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
             key={playerId}
             className={`seat${state.turn === playerId ? ' is-turn' : ''}${player.connected ? '' : ' is-away'}${
               partner ? ' is-partner' : ''
-            }`}
+            }${crowded ? ' is-crowded' : ''}`}
             style={{ left: badge.x, top: badge.y }}
           >
             <span className="seat__name">

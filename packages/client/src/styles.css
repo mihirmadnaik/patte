@@ -241,6 +241,12 @@ html, body, #root {
 
 .seat__name { display: block; font-size: 13px; font-weight: 600; }
 .seat__count { display: block; font-size: 11px; opacity: 0.65; }
+
+/* A crowded table: the name and its colour, and nothing else. */
+.seat.is-crowded { padding: 4px 7px; }
+.seat.is-crowded .seat__name { font-size: 11px; white-space: nowrap; }
+.seat.is-crowded .seat__dot { width: 6px; height: 6px; margin-right: 3px; }
+.seat.is-crowded .seat__count { display: none; }
 .seat.is-turn {
   border-color: var(--accent);
   box-shadow: 0 0 0 var(--turn-ring) rgba(240, 192, 74, 0.25), 0 0 18px rgba(240, 192, 74, 0.38);
@@ -905,11 +911,20 @@ html, body, #root {
 
 .panel__card--wide { width: min(460px, 92vw); }
 
-.scoreboard { margin: 0 0 18px; }
+/* Ten players is ten columns, which is wider than a phone. It scrolls
+   sideways rather than squeezing the numbers into illegibility, and the
+   round column stays put so a row can still be read. */
+.scoreboard { margin: 0 0 18px; overflow-x: auto; }
 
 .scoreboard table {
   width: 100%;
-  border-collapse: collapse;
+  min-width: max-content;
+  /* Separate rather than collapsed: a sticky cell in a collapsed-border
+     table does not paint its own background, so the round column would sit
+     transparently over the numbers sliding under it. Only bottom borders are
+     drawn, so nothing doubles up. */
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
@@ -923,6 +938,20 @@ html, body, #root {
 .scoreboard thead th { font-size: 11px; opacity: 0.6; font-weight: 600; }
 .scoreboard thead th.is-you { color: var(--accent); opacity: 1; }
 .scoreboard th[scope='row'] { text-align: left; opacity: 0.5; font-weight: 400; }
+.scoreboard th[scope='row'],
+.scoreboard thead th:first-child,
+.scoreboard tfoot th {
+  position: sticky;
+  left: 0;
+  /* Above the cells that slide underneath it: a row header painted beneath
+     its own row reads as two numbers on top of each other. */
+  z-index: 1;
+  background: #0e1a14;
+  /* Dimmed by colour rather than by opacity, which the header rules above
+     use -- a translucent cell lets the numbers scroll through it. */
+  opacity: 1;
+  color: rgba(255, 255, 255, 0.5);
+}
 .scoreboard td.is-winner { color: #8fe0ae; }
 .scoreboard tfoot td, .scoreboard tfoot th { border-bottom: 0; padding-top: 9px; font-weight: 700; }
 .scoreboard tfoot td.is-leading { color: var(--accent); }
@@ -1101,6 +1130,13 @@ html, body, #root {
   transform: translateX(-50%);
   display: flex;
   align-items: center;
+  /* Ten seats is ten readouts, which is wider than a phone. Wrapping keeps
+     every row on screen -- including, crucially, your own, which used to be
+     the one clipped off the right-hand end. */
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100% - 20px);
+  row-gap: 3px;
   gap: 18px;
   padding: 7px 16px;
   border-radius: 999px;
@@ -1128,6 +1164,10 @@ html, body, #root {
 /* Which of the two rows is yours, when a row is a side rather than a seat. */
 .trumpstrip__player.is-yours em { opacity: 0.8; }
 .trumpstrip__player.is-yours { font-weight: 600; }
+
+/* The same strip with a tableful of people in it. */
+.trumpstrip.is-crowded { gap: 10px; font-size: 11px; padding: 6px 12px; }
+.trumpstrip.is-crowded em { font-size: 8px; margin-right: 4px; }
 
 /* The stake stepper, which is the rounds stepper doing a second job. */
 .auction__stake { margin-top: 4px; }

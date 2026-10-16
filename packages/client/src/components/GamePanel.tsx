@@ -131,7 +131,7 @@ export function GamePanel({
             ))}
           </ul>
 
-          {isOwner && !ruleset.openEnded && (
+          {isOwner && !ruleset.openEnded && !ruleset.fixedLength && (
             <label className="rounds">
               Rounds to play
               <span className="rounds__stepper">
@@ -167,9 +167,10 @@ export function GamePanel({
           <p className="panel__hint">
             {!enough
               ? `Needs ${ruleset.minPlayers}–${ruleset.maxPlayers} players. ${seated} here — share the code above.`
-              : ruleset.openEnded
-                ? 'Hands run on until you stop. The score is a ledger, and whoever is carrying it deals.'
-                : `Best of ${state.match.rounds} — the whole deck is dealt out each round.`}
+              : (ruleset.lobbyNote?.(seated) ??
+                (ruleset.openEnded
+                  ? 'Hands run on until you stop. The score is a ledger, and whoever is carrying it deals.'
+                  : `Best of ${state.match.rounds} — the whole deck is dealt out each round.`))}
           </p>
         </div>
       </div>
@@ -535,9 +536,6 @@ function Auction({
   const index = Math.min(at, Math.max(stakes.length - 1, 0));
   const stake = stakes[index];
 
-  const rows = getRuleset(state.rulesetId).standings?.(state) ?? null;
-  const yours = rows?.find((row) => rowCovers(row, you));
-
   return (
     <div className="panel panel--soft">
       <div className="panel__card">
@@ -554,7 +552,7 @@ function Auction({
           <>
             {stake !== undefined && (
               <label className="rounds auction__stake">
-                Stake
+                {call.stakeLabel ?? 'Stake'}
                 <span className="rounds__stepper">
                   <button onClick={() => setAt(Math.max(0, index - 1))} aria-label="a smaller stake">
                     −
@@ -587,23 +585,23 @@ function Auction({
                     : `${call.declareLabel} · ${stake}`}
                 </button>
               )}
-              <button
-                onClick={() => {
-                  net.submit({ type: 'choose', option: call.passOption });
-                  sounds.pickup();
-                }}
-              >
-                {call.passLabel}
-              </button>
+              {/* An auction nobody may sit out offers no way to sit out. In
+                  जजमेंट nought is one of the numbers, not a refusal. */}
+              {call.passOption !== undefined && (
+                <button
+                  onClick={() => {
+                    net.submit({ type: 'choose', option: call.passOption! });
+                    sounds.pickup();
+                  }}
+                >
+                  {call.passLabel}
+                </button>
+              )}
             </div>
           </>
         )}
 
-        {yours && (
-          <p className="panel__hint">
-            Leave it, and your side must take {yours.quota} of the tricks.
-          </p>
-        )}
+        {call.hint && <p className="panel__hint">{call.hint}</p>}
       </div>
     </div>
   );
@@ -627,7 +625,7 @@ export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }):
   const trump = trumpOf(state);
 
   return (
-    <div className="trumpstrip">
+    <div className={`trumpstrip${rows.length > 6 ? ' is-crowded' : ''}`}>
       {trump && (
         <span className={`trumpstrip__trump${trump === 'H' || trump === 'D' ? ' is-red' : ''}`}>
           <em>trump</em>
@@ -638,7 +636,9 @@ export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }):
       {rows.map((row) => (
         <span
           key={row.playerId}
-          className={`trumpstrip__player${row.won >= row.quota ? ' is-met' : ''}${
+          className={`trumpstrip__player${
+            (row.exact ? row.won === row.quota : row.won >= row.quota) ? ' is-met' : ''
+          }${
             rowCovers(row, you) ? ' is-yours' : ''
           }`}
         >

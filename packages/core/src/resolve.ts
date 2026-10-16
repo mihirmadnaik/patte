@@ -543,10 +543,17 @@ function dealEvents(state: GameState, deps: ResolveDeps, reset: boolean): EventB
   const events: EventBody[] = [];
 
   if (reset) events.push({ type: 'matchReset' });
-  // Starting a round the match has no room for extends it by one, so "play
-  // another" always works without needing a separate step.
   const played = reset ? 0 : state.match.played.length;
-  if (played >= state.match.rounds) {
+  if (setup.rounds !== undefined) {
+    // A game whose length the rules decide says so at every deal, because the
+    // answer can change: जजमेंट's ladder is as long as the seat count allows,
+    // and somebody joining between rounds makes it a different match. Never
+    // shorter than what has already been played, so the record stays whole.
+    const rounds = Math.max(setup.rounds, played);
+    if (rounds !== state.match.rounds) events.push({ type: 'matchRoundsSet', rounds });
+  } else if (played >= state.match.rounds) {
+    // Otherwise, starting a round the match has no room for extends it by one,
+    // so "play another" always works without needing a separate step.
     events.push({ type: 'matchRoundsSet', rounds: played + 1 });
   }
 

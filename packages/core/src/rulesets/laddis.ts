@@ -23,7 +23,7 @@
  * Two mechanics the engine had never needed:
  *
  * **A trump nobody can see.** When everybody passes, the player to the
- * dealer's right sets one of their own cards face down. Its suit is trump,
+ * dealer's left sets one of their own cards face down. Its suit is trump,
  * they alone know it, and anybody who cannot follow suit may demand it be
  * turned up. Until that happens *nothing is a trump* -- a card of that suit
  * played earlier in the hand was only ever a card of that suit, which is the
@@ -176,9 +176,9 @@ function nameList(state: GameState, players: readonly PlayerId[]): string {
 /**
  * The next seat the way play travels.
  *
- * Both the deal and the play run anticlockwise, and `seatOrder` is taken to
- * run the same way -- so the next entry is the player to this one's right, and
- * one step is always an opponent while two is always a partner.
+ * Both the deal and the play run clockwise, which is the way `seatOrder`
+ * runs -- so the next entry is the player to this one's left, and one step is
+ * always an opponent while two is always a partner.
  */
 function nextSeat(seats: readonly PlayerId[], playerId: PlayerId): PlayerId {
   const at = seats.indexOf(playerId);
@@ -191,7 +191,7 @@ function partnerSeat(seats: readonly PlayerId[], playerId: PlayerId): PlayerId {
   return seats[(at + 2) % Math.max(seats.length, 1)] ?? playerId;
 }
 
-/** Whoever sets the trump aside and leads: the player to the dealer's right. */
+/** Whoever sets the trump aside and leads: the player to the dealer's left. */
 function callerOf(state: GameState): PlayerId | null {
   return state.inPlay[0] ?? null;
 }
@@ -702,7 +702,7 @@ export const laddis: Ruleset = {
     rules: [
       'Four players in fixed pairs, partners across the table. Thirty-two cards — ace down to seven, ace high.',
       'Four cards each to start. Anybody may declare वख्खै on them; if nobody does, a trump is set and four more cards go out for a hand of eight tricks.',
-      'If everybody passes, the player to the dealer\'s right sets one of their own cards face down. Its suit is trump and they alone know it.',
+      'If everybody passes, the player to the dealer\'s left sets one of their own cards face down. Its suit is trump and they alone know it.',
       'Nothing is a trump until the card is turned up. Anybody who cannot follow suit may ask for it on their turn, and from that moment the suit is trump — including for the cards already lying in the trick it was turned up in.',
       'Tricks already gathered are not reopened. They were won under what the table knew at the time.',
       'Four 7s is the four worst cards in the pack at once. Whoever is dealt them may throw the hand in, and the cards go back for a fresh deal with nothing scored.',
@@ -745,6 +745,13 @@ export const laddis: Ruleset = {
     const bidder = nextBidder(state);
     if (!bidder) return null;
 
+    // What saying nothing leaves the player being asked: the quota their side
+    // is already carrying on an ordinary hand.
+    const quota = sameSide(state, bidder, dealerOf(state) ?? bidder)
+      ? DEALER_QUOTA
+      : CHALLENGER_QUOTA;
+    const hint = `Leave it, and your side must take ${quota} of the tricks.`;
+
     const runoff = runoffOf(state);
     const stakes = openTo(state, runoff);
 
@@ -781,6 +788,7 @@ export const laddis: Ruleset = {
         },
         passOption: PASS_BID,
         passLabel: partners ? 'Let them have it' : 'Stand down',
+        hint,
       };
     }
 
@@ -799,6 +807,7 @@ export const laddis: Ruleset = {
       declareLabel: 'Declare वख्खै',
       passOption: PASS_BID,
       passLabel: 'Pass',
+      hint,
     };
   },
 
@@ -946,7 +955,7 @@ export const laddis: Ruleset = {
       seats[match.played.length % Math.max(seats.length, 1)] ??
       seats[0]!;
 
-    // Turn order runs from the dealer's right, who sets the trump and leads.
+    // Turn order runs from the dealer's left, who sets the trump and leads.
     const turns: PlayerId[] = [];
     for (let step = 1; step <= seats.length; step++) {
       const at = (seats.indexOf(dealer) + step) % seats.length;
@@ -974,7 +983,7 @@ export const laddis: Ruleset = {
       card.faceUp = false;
     };
 
-    // Four each, in turn order, starting with the player to the dealer's right.
+    // Four each, in turn order, starting with the player to the dealer's left.
     for (let i = 0; i < FIRST_BATCH; i++) {
       for (const playerId of turns) place(shoe[next++]!, zoneOf(`hand:${playerId}`));
     }
@@ -1259,7 +1268,7 @@ export const laddis: Ruleset = {
  *
  * The declarer leads. They have wagered on beating both opponents without
  * help, and the lead is part of what they are taking on -- the player to the
- * dealer's right would otherwise lead a hand they may not even be in.
+ * dealer's left would otherwise lead a hand they may not even be in.
  */
 function declareAlone(state: GameState, won: { playerId: PlayerId; stake: number }): EventBody[] {
   const sitting = partnersOf(state, won.playerId);

@@ -20,9 +20,11 @@ export function Lobby({
   const [reading, setReading] = useState<'help' | Ruleset | null>(null);
 
   // Only games with a scoreboard have anything to say about match length --
-  // and a game scored as a running ledger has no last round to run to.
+  // and a game scored as a running ledger has no last round to run to, while
+  // one whose hand shrinks to a single card has a last round already decided.
   const chosen = OFFERED_RULESETS.find((ruleset) => ruleset.id === rulesetId);
-  const multiRound = chosen !== undefined && !chosen.autoStart && !chosen.openEnded;
+  const multiRound =
+    chosen !== undefined && !chosen.autoStart && !chosen.openEnded && !chosen.fixedLength;
 
   const remember = (): string => {
     const trimmed = name.trim() || 'Player';

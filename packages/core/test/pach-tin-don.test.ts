@@ -139,6 +139,27 @@ describe('quotas', () => {
     expect(quotas(t.state)[t.state.inPlay[0]!]).toBe(5);
   });
 
+  /**
+   * Which way round the table the game runs.
+   *
+   * `inPlay` order alone cannot catch this -- every assertion above reads the
+   * seats back out of it, so it would pass whichever way the game travelled.
+   * This pins it against `seatOrder` itself, which runs clockwise and is drawn
+   * that way, so the seat after the dealer is the one on the dealer's left.
+   */
+  it('put the five on the dealer\'s left, clockwise', () => {
+    const t = dealt();
+    const seats = t.state.seatOrder;
+    const dealer = t.state.gameData['dealer'] as PlayerId;
+    const left = seats[(seats.indexOf(dealer) + 1) % seats.length]!;
+    const right = seats[(seats.indexOf(dealer) + 2) % seats.length]!;
+
+    expect(t.state.inPlay).toEqual([left, right, dealer]);
+    expect(quotas(t.state)[left]).toBe(5);
+    expect(quotas(t.state)[right]).toBe(3);
+    expect(pachTinDon.trumpCall!(t.state)!.chooser).toBe(left);
+  });
+
   it('add up to the number of tricks', () => {
     const t = dealt();
     const total = Object.values(quotas(t.state)).reduce((a, b) => a + b, 0);
@@ -179,6 +200,13 @@ describe('the deal moves round', () => {
     }
     // Three seats, so it comes back round on the fourth deal.
     expect(dealers[3]).toBe(dealers[0]);
+
+    // And it travels to the left, the way the play does.
+    const seats = t.state.seatOrder;
+    for (let i = 1; i < dealers.length; i++) {
+      const expected = seats[(seats.indexOf(dealers[i - 1]!) + 1) % seats.length];
+      expect(dealers[i], `the deal went the wrong way at step ${i}`).toBe(expected);
+    }
   });
 
   it('carries the quotas round with it', () => {

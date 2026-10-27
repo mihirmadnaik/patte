@@ -26,6 +26,7 @@ import {
 import { canSeeFace } from './project.js';
 import type { Ruleset } from './rulesets/types.js';
 import {
+  MAX_NAME_LENGTH,
   getCard,
   getZone,
   tryCard,
@@ -471,7 +472,7 @@ function build(
       return resolved({ type: 'optionSet', key: intent.key, value: intent.value });
 
     case 'rename': {
-      const name = intent.name.trim().slice(0, 24);
+      const name = intent.name.trim().slice(0, MAX_NAME_LENGTH);
       if (!name) return deny('a name cannot be empty');
       return resolved({ type: 'playerRenamed', playerId: actor, name });
     }

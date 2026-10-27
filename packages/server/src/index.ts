@@ -8,6 +8,7 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_RULESET_ID,
+  MAX_NAME_LENGTH,
   isClientMessage,
   isOfferedRulesetId,
   PROTOCOL_VERSION,
@@ -235,7 +236,7 @@ wss.on('connection', (socket: WebSocket) => {
       }
 
       room = found;
-      const name = (message.name || 'Player').slice(0, 24);
+      const name = (message.name || 'Player').slice(0, MAX_NAME_LENGTH);
       mySocket = { send: (d) => socket.send(d), close: () => socket.close() };
       room.join(playerId, name, mySocket);
       app.log.info({ roomId: room.id, playerId }, 'player joined');

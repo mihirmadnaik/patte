@@ -113,6 +113,19 @@ export interface Card {
   pos?: Point;
 }
 
+/**
+ * How long a player's name may be.
+ *
+ * One number, because three places enforce it -- the field somebody types
+ * into, the join, and the rename -- and only the last two are authoritative.
+ * Three copies of a limit is three chances for the field to accept a name the
+ * table then silently cuts short.
+ *
+ * Short on purpose: a name is read at a glance off a plate beside a hand, and
+ * at a ten-seat table those plates sit shoulder to shoulder.
+ */
+export const MAX_NAME_LENGTH = 10;
+
 export interface Player {
   id: PlayerId;
   name: string;

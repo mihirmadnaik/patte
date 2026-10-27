@@ -1,4 +1,4 @@
-import { OFFERED_RULESETS, type Ruleset } from '@patte/core';
+import { MAX_NAME_LENGTH, OFFERED_RULESETS, type Ruleset } from '@patte/core';
 import { useState } from 'react';
 import { HelpPanel, RulesPanel } from './Help.js';
 
@@ -11,7 +11,13 @@ export function Lobby({
   /** The table just left, if any: its code is filled in, ready to go back. */
   lastRoom?: string | null;
 }): React.JSX.Element {
-  const [name, setName] = useState(() => localStorage.getItem('patte:name') ?? '');
+  // Cut on the way in as well as on the way out: a name remembered from
+  // before the limit came down would otherwise sit in the field at its old
+  // length -- `maxLength` only governs typing -- and be shortened by the
+  // table on arrival, so the plate would not say what the field did.
+  const [name, setName] = useState(() =>
+    (localStorage.getItem('patte:name') ?? '').slice(0, MAX_NAME_LENGTH),
+  );
   const [code, setCode] = useState(lastRoom ?? '');
   const [busy, setBusy] = useState(false);
   const [rulesetId, setRulesetId] = useState(OFFERED_RULESETS[0]!.id);
@@ -27,7 +33,7 @@ export function Lobby({
     chosen !== undefined && !chosen.autoStart && !chosen.openEnded && !chosen.fixedLength;
 
   const remember = (): string => {
-    const trimmed = name.trim() || 'Player';
+    const trimmed = name.trim().slice(0, MAX_NAME_LENGTH) || 'Player';
     localStorage.setItem('patte:name', trimmed);
     return trimmed;
   };
@@ -60,7 +66,14 @@ export function Lobby({
 
         <label>
           Your name
-          <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Player" maxLength={24} />
+          {/* The same limit the table itself applies, rather than a second
+              number that lets somebody type a name and watch it get cut. */}
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Player"
+            maxLength={MAX_NAME_LENGTH}
+          />
         </label>
 
         <fieldset className="games">

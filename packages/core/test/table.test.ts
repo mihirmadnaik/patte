@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_NAME_LENGTH,
   buildDeck,
   checkInvariants,
   isPredictable,
@@ -282,5 +283,33 @@ describe('prediction', () => {
     const rolledBack = predict(confirmed, [pending[0]!], 'ana');
     expect(rolledBack.cards[card]!.zone).toBe('table');
     expect(rolledBack.cards[card]!.faceUp).toBe(false);
+  });
+});
+
+describe('what a player may call themselves', () => {
+  it('cuts a name to the limit rather than refusing it', () => {
+    // Refusing would mean a dialog in the middle of joining a game; the
+    // name is cosmetic, so it is shortened and play carries on.
+    const table = newTable(['ana', 'ben']);
+    table.submit('ana', { type: 'rename', name: 'x'.repeat(MAX_NAME_LENGTH + 20) });
+    expect(table.state.players['ana']!.name).toHaveLength(MAX_NAME_LENGTH);
+  });
+
+  it('leaves a name inside the limit exactly as it was given', () => {
+    const table = newTable(['ana', 'ben']);
+    table.submit('ana', { type: 'rename', name: 'Mihir' });
+    expect(table.state.players['ana']!.name).toBe('Mihir');
+  });
+
+  it('trims before measuring, so spaces do not eat the limit', () => {
+    const table = newTable(['ana', 'ben']);
+    table.submit('ana', { type: 'rename', name: `   ${'x'.repeat(MAX_NAME_LENGTH)}   ` });
+    expect(table.state.players['ana']!.name).toBe('x'.repeat(MAX_NAME_LENGTH));
+  });
+
+  it('renames only the player who asked', () => {
+    const table = newTable(['ana', 'ben']);
+    table.submit('ana', { type: 'rename', name: 'Mihir' });
+    expect(table.state.players['ben']!.name).toBe('ben');
   });
 });

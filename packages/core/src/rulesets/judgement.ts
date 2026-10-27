@@ -7,12 +7,16 @@
  *
  * Three things make it its own game rather than another trick-taker.
  *
- * **The hand shrinks.** The first round deals as many cards as the pack will
- * divide into the table -- thirteen each for four players, five each for ten
- * -- and every round after it deals one fewer, down to a single card. So the
- * match is as long as the seat count makes it, which is why its length is not
- * a thing anybody is asked. The cards the deal cannot use are set aside out of
- * play, and there are more of them every round.
+ * **The hand shrinks, and then grows back.** The first round deals as many
+ * cards as the pack will divide into the table -- thirteen each for four
+ * players, five each for ten -- and every round after it deals one fewer,
+ * down to a single card. Then it climbs back: one card again, two, and on up
+ * until the hand is the size it started at, and the match is over. The
+ * single-card round is played at both ends of the turn, so the two halves
+ * mirror each other and a match is twice the opening hand in rounds. Its
+ * length is therefore the seat count's to decide, which is why nobody is
+ * asked. The cards the deal cannot use are set aside out of play -- most of
+ * them, at the turn.
  *
  * **Trump is not chosen.** It runs on a five-step cycle fixed before a card is
  * dealt -- spades, hearts, clubs, diamonds, and then a round with no trump at
@@ -119,6 +123,26 @@ function roundOf(state: GameState): number {
 /** As many cards each as the pack divides into the table. */
 function openingHand(seats: number): number {
   return Math.max(Math.floor(PACK / Math.max(seats, 1)), 1);
+}
+
+/**
+ * How many cards a given round deals: down to one, and back up again.
+ *
+ * The hand shortens by a card a round until it reaches one, and then
+ * lengthens by a card a round until it is back where it started. The
+ * single-card round is played *twice*, once at the bottom of the descent and
+ * once at the foot of the climb, which is what makes the two halves mirror
+ * each other exactly -- and is why a match is `2 * opening` rounds rather
+ * than one short of it.
+ *
+ * Rounds count from one. Past the top of the ladder it stays at the top: a
+ * bonus round somebody deals after the match is over is a full hand, not a
+ * fourteenth card that does not exist.
+ */
+function handSizeFor(opening: number, round: number): number {
+  const descending = opening - round + 1;
+  if (descending >= 1) return descending;
+  return Math.min(round - opening, opening);
 }
 
 /**
@@ -253,7 +277,8 @@ export const judgement: Ruleset = {
   autoStart: false,
   scoreDirection: 'high',
   scoreNote: 'Ten a trick for a call you hit exactly, five for a called nothing, and nothing at all for a call you miss.',
-  // The ladder ends at a one-card hand, so the length follows from the seats.
+  // The ladder runs down to one card and back, so its length follows from
+  // the seats rather than from anybody's choice.
   fixedLength: true,
 
   /**
@@ -264,21 +289,22 @@ export const judgement: Ruleset = {
    * states the real figure.
    */
   lobbyNote(seated: number): string {
-    const rounds = openingHand(seated);
-    return `${rounds} rounds — ${rounds} cards each, then one fewer every round down to a single card.`;
+    const opening = openingHand(seated);
+    return `${opening * 2} rounds — ${opening} cards each down to one, then back up to ${opening}.`;
   },
 
   howToPlay: {
     goal: 'Take exactly as many tricks as you called — no more, no fewer.',
     rules: [
-      'The full fifty-two-card pack, ace high. The first round deals as many cards each as the pack divides into the table; every round after it deals one fewer, down to a single card. That is the whole match.',
-      'The cards left over each round are set aside and nobody plays them. There are more of them every round.',
+      'The full fifty-two-card pack, ace high. The first round deals as many cards each as the pack divides into the table; every round after it deals one fewer, down to a single card — and then back up, a card at a time, until the hand is the size it began at. That is the whole match.',
+      'The one-card round is played twice, once at the bottom of the way down and once at the foot of the way back up.',
+      'The cards left over each round are set aside and nobody plays them. There are more of them the shorter the hand gets, and most of all at the one-card round.',
       'Trump is fixed before the deal and nobody chooses it: spades, then hearts, then clubs, then diamonds, then a round with no trump at all — and round again.',
       'Starting at the dealer\'s left, everybody calls how many of the tricks they will take. Nought is a call, not a pass.',
       'The dealer calls last and may not call the number that would make every call add up to the hand exactly — so somebody always has to fail.',
       'Follow the suit that was led if you can. The highest trump takes the trick; with no trump in it, the highest card of the suit led. Whoever wins it leads the next one.',
       'Take exactly what you called and score ten for each trick of it — five if you called nothing and took nothing. Take one more or one fewer and the round scores you nothing, so a hand can be worth losing on purpose.',
-      'The deal moves one seat to the left each round. Highest total when the one-card round is done wins.',
+      'The deal moves one seat to the left each round. Highest total at the top of the climb wins.',
     ],
   },
 
@@ -416,9 +442,7 @@ export const judgement: Ruleset = {
     const round = counted('nextRound') ?? counted('round') ?? 1;
     // One carried number, and everything else read off it: the hand size and
     // the trump cannot drift out of step with the round if neither is stored.
-    // One card is the bottom, so dealing past the end of the ladder deals
-    // another single card rather than none at all.
-    const handSize = Math.max(opening - (round - 1), 1);
+    const handSize = handSizeFor(opening, round);
     const trump = TRUMP_CYCLE[(round - 1) % TRUMP_CYCLE.length] ?? null;
 
     const seated = (id: unknown): PlayerId | null =>
@@ -476,9 +500,9 @@ export const judgement: Ruleset = {
       options: { handsArePrivate: true, enforceTurnOrder: true },
       firstTurn: turns[0] ?? null,
       inPlay: turns,
-      // As many rounds as the opening hand had cards: it loses one a round
-      // until it reaches one.
-      rounds: opening,
+      // Down to one and back up, with the single-card hand played at both
+      // ends of the turn: twice as many rounds as the opening hand had cards.
+      rounds: opening * 2,
       gameData: {
         stage: 'bidding',
         dealer,

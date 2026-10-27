@@ -147,8 +147,8 @@ describe('the ladder', () => {
       for (const playerId of players) {
         expect(hand(t.state, playerId), `${players.length} seats`).toHaveLength(expected);
       }
-      // And the match is exactly that many rounds: one card fewer each time.
-      expect(t.state.match.rounds, `${players.length} seats`).toBe(expected);
+      // Down to one card and back up, so the match is twice the opening hand.
+      expect(t.state.match.rounds, `${players.length} seats`).toBe(expected * 2);
       expect(checkInvariants(t.state)).toEqual([]);
     }
   });
@@ -189,23 +189,41 @@ describe('the ladder', () => {
     expect(t.state.match.played).toHaveLength(0);
   });
 
-  it('runs the whole ladder out to a single card', () => {
-    // Five seats is a ten-round match, which is the shortest full ladder that
-    // still crosses the trump cycle twice.
+  /**
+   * Down to one card and back up again, every rung of it.
+   *
+   * The single-card hand is dealt twice -- the bottom of the descent and the
+   * foot of the climb -- which is what makes the two halves mirror and the
+   * match exactly twice the opening hand.
+   */
+  it('runs the whole ladder out, down to one card and back up', () => {
     const players = ['ana', 'ben', 'cal', 'dev', 'eve'];
     const t = dealt(3, players);
     const sizes: number[] = [];
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 20; i++) {
       sizes.push(handSize(t.state));
       playOut(called(t));
-      if (i < 9) nextRound(t);
+      if (i < 19) nextRound(t);
     }
 
-    expect(sizes).toEqual([10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
-    expect(t.state.match.played).toHaveLength(10);
-    // Ten rounds played of a ten-round match: there is no eleventh.
-    expect(t.state.match.rounds).toBe(10);
+    expect(sizes).toEqual([10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(t.state.match.played).toHaveLength(20);
+    // Twenty rounds played of a twenty-round match: there is no twenty-first.
+    expect(t.state.match.rounds).toBe(20);
+  });
+
+  it('deals a full hand again if somebody plays on past the top', () => {
+    // Only reachable by dealing after the match is over. The top of the
+    // ladder is where it stays, rather than running off the end of the pack.
+    const players = ['ana', 'ben', 'cal', 'dev', 'eve'];
+    const t = dealt(3, players);
+    for (let i = 0; i < 20; i++) {
+      playOut(called(t));
+      nextRound(t);
+    }
+    expect(round(t.state)).toBe(21);
+    expect(handSize(t.state)).toBe(10);
   });
 
   /**
@@ -215,13 +233,13 @@ describe('the ladder', () => {
    * fits in one test -- and it is the only size where the trump cycle ends
    * exactly on its trumpless round, which is also the one-card round.
    */
-  it('plays a full ten-seat match out, five rounds of five down to one', () => {
+  it('plays a full ten-seat match out, five cards down to one and back', () => {
     const seats = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'];
     const t = dealt(1, seats);
     const sizes: number[] = [];
     const trumps: (Suit | null)[] = [];
 
-    for (let r = 1; r <= 5; r += 1) {
+    for (let r = 1; r <= 10; r += 1) {
       expect(round(t.state), `round ${r}`).toBe(r);
       sizes.push(handSize(t.state));
       trumps.push((t.state.gameData['trump'] as Suit | undefined) ?? null);
@@ -229,13 +247,14 @@ describe('the ladder', () => {
       playOut(called(t));
       expect(t.state.phase, `round ${r} did not finish`).toBe('finished');
       expect(checkInvariants(t.state), `round ${r}`).toEqual([]);
-      if (r < 5) nextRound(t);
+      if (r < 10) nextRound(t);
     }
 
-    expect(sizes).toEqual([5, 4, 3, 2, 1]);
-    expect(trumps).toEqual(['S', 'H', 'C', 'D', null]);
-    expect(t.state.match.played).toHaveLength(5);
-    expect(t.state.match.rounds).toBe(5);
+    expect(sizes).toEqual([5, 4, 3, 2, 1, 1, 2, 3, 4, 5]);
+    // Ten rounds is two full turns of the five-step trump cycle.
+    expect(trumps).toEqual(['S', 'H', 'C', 'D', null, 'S', 'H', 'C', 'D', null]);
+    expect(t.state.match.played).toHaveLength(10);
+    expect(t.state.match.rounds).toBe(10);
   });
 
   it('moves the deal one seat to the left each round', () => {

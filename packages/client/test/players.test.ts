@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import type { GameState, PlayerId } from '@patte/core';
+import { OFFERED_RULESETS, type GameState, type PlayerId } from '@patte/core';
 import { SEAT_COLOURS, cardColour, seatColour } from '../src/players.js';
 
 function table(seats: Record<PlayerId, number>, playedBy: Record<string, PlayerId> = {}): GameState {
@@ -27,6 +27,43 @@ describe('a colour per seat', () => {
     const colours = ['ana', 'ben', 'cal', 'dev'].map((id) => seatColour(state, id));
     expect(new Set(colours).size).toBe(4);
     expect(colours.every((colour) => colour !== undefined)).toBe(true);
+  });
+
+  /**
+   * The palette has to keep up with the biggest game on offer.
+   *
+   * Written against the rulesets rather than against a number, because the
+   * number is exactly what went wrong: there were four colours and
+   * `seat % 4`, so the fifth player at a table was handed the first player's
+   * amber and two people shared a mark. Asserting "ten" here would need
+   * editing by whoever next seats eleven, and would not fail until they did.
+   */
+  it('has a colour for every seat the largest game can fill', () => {
+    const biggest = Math.max(...OFFERED_RULESETS.map((ruleset) => ruleset.maxPlayers));
+    expect(SEAT_COLOURS.length).toBeGreaterThanOrEqual(biggest);
+  });
+
+  it('gives the biggest table a different colour for every seat', () => {
+    const biggest = Math.max(...OFFERED_RULESETS.map((ruleset) => ruleset.maxPlayers));
+    const seats = Object.fromEntries(
+      Array.from({ length: biggest }, (_, i) => [`p${i}`, i]),
+    ) as Record<PlayerId, number>;
+    const state = table(seats);
+
+    const colours = Object.keys(seats).map((id) => seatColour(state, id));
+    expect(colours.every((colour) => colour !== undefined), 'a seat with no colour').toBe(true);
+    expect(new Set(colours).size, 'two seats sharing a colour').toBe(biggest);
+  });
+
+  it('is every colour distinct in the first place', () => {
+    expect(new Set(SEAT_COLOURS).size).toBe(SEAT_COLOURS.length);
+  });
+
+  it('leaves a seat past the end of the palette unmarked, rather than wrapping', () => {
+    // A borrowed colour says something false -- that two players are one --
+    // where a missing one only says nothing.
+    const state = table({ ana: SEAT_COLOURS.length });
+    expect(seatColour(state, 'ana')).toBeUndefined();
   });
 
   it('is the seat, not the viewer, so every screen agrees', () => {

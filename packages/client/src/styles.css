@@ -619,10 +619,16 @@ html, body, #root {
  * a question is on screen. `--toolbar-h` is measured and published by the
  * toolbar itself, since its height depends on how much wraps onto a second
  * row; the fallback is the one-row height.
+ *
+ * And below the trump and quota strip, where there is one -- which is the
+ * whole point of a strip that is meant to stay on screen. `--strip-bottom`
+ * is how far down the window it reaches, published the same way and by the
+ * same reasoning; `max` is what makes its absence mean "under the toolbar,
+ * as before" rather than "over the toolbar".
  */
 .panel {
   position: fixed;
-  inset: var(--toolbar-h, 56px) 0 0 0;
+  inset: max(var(--strip-bottom, 0px), var(--toolbar-h, 56px)) 0 0 0;
   display: flex;
   padding: 16px;
   overflow-y: auto;
@@ -1125,7 +1131,17 @@ html, body, #root {
 
 .trumpstrip {
   position: absolute;
-  top: 12px;
+  /*
+   * Below the toolbar, not twelve pixels down the window.
+   *
+   * Nothing between here and the viewport is positioned, so this is placed
+   * against the window itself -- and the toolbar, which is painted above it,
+   * is taller than twelve pixels. A single-row strip therefore sat entirely
+   * behind the toolbar on every screen wide enough to keep it floating. On a
+   * phone it is taken out of this rule and put in the flow instead, which is
+   * why it was only ever visible there.
+   */
+  top: calc(var(--toolbar-h, 56px) + 12px);
   left: 50%;
   transform: translateX(-50%);
   display: flex;

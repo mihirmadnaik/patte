@@ -15,7 +15,7 @@ import {
   type StandingsRow,
   type Suit,
 } from '@patte/core';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { openingStake, questionOf, stepStake } from '../auction.js';
 import { copyText } from '../clipboard.js';
 import type { Connection } from '../net.js';
@@ -631,6 +631,35 @@ function Auction({
  */
 export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }): React.JSX.Element | null {
   const rows = getRuleset(state.rulesetId).standings?.(state) ?? null;
+
+  /*
+   * How far down the window the strip reaches, published for the overlay.
+   *
+   * The overlay used to start immediately below the toolbar, which was true
+   * until this strip appeared between the two -- so a panel covered it, and
+   * in जजमेंट, where trump is known before anybody calls, it covered the one
+   * fact a player needs in order to bid at all.
+   *
+   * Measured rather than assumed, for the reason the toolbar is: the strip
+   * sits in the flow on a phone and floats over the table on a wider screen,
+   * and it wraps onto a second row at a crowded table. Nothing here can be a
+   * constant. Zero when there is no strip, which puts the overlay back under
+   * the toolbar where it was.
+   */
+  const strip = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const publish = (): void => {
+      const bottom = strip.current?.getBoundingClientRect().bottom ?? 0;
+      document.documentElement.style.setProperty('--strip-bottom', `${Math.round(bottom)}px`);
+    };
+    publish();
+    window.addEventListener('resize', publish);
+    return () => {
+      window.removeEventListener('resize', publish);
+      document.documentElement.style.removeProperty('--strip-bottom');
+    };
+  });
+
   if (!rows || rows.length === 0) return null;
 
   // Trump is not named until partway through the deal, so the strip carries
@@ -640,7 +669,7 @@ export function TrumpStrip({ state, you }: { state: GameState; you: PlayerId }):
   const trump = trumpOf(state);
 
   return (
-    <div className={`trumpstrip${rows.length > 6 ? ' is-crowded' : ''}`}>
+    <div ref={strip} className={`trumpstrip${rows.length > 6 ? ' is-crowded' : ''}`}>
       {trump && (
         <span className={`trumpstrip__trump${trump === 'H' || trump === 'D' ? ' is-red' : ''}`}>
           <em>trump</em>

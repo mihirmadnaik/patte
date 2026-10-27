@@ -159,11 +159,18 @@ function hookedFor(state: GameState, caller: PlayerId): number | null {
   return gap >= 0 ? gap : null;
 }
 
-/** The numbers this player may call: none to all of them, less the hook. */
-function openTo(state: GameState, caller: PlayerId): number[] {
-  const hooked = hookedFor(state, caller);
+/**
+ * Every number there is to call: none of the tricks, up to all of them.
+ *
+ * Deliberately whole, hook and all. A ladder with the hooked number quietly
+ * missing is a ladder that counts 0, 2, 3 -- so a player stepping up once
+ * from nothing lands on two, having asked for one, and reasonably reports
+ * that the wrong number was registered. What the dealer may not call is said
+ * out loud instead, by `hookedFor` and the note beside the stepper.
+ */
+function ladderFor(state: GameState): number[] {
   const ladder: number[] = [];
-  for (let n = 0; n <= handSizeOf(state); n++) if (n !== hooked) ladder.push(n);
+  for (let n = 0; n <= handSizeOf(state); n++) ladder.push(n);
   return ladder;
 }
 
@@ -304,10 +311,19 @@ export const judgement: Ruleset = {
       bidder: caller,
       prompt:
         hooked !== null
-          ? `You call last, so you cannot call ${hooked} — that would make the calls add up to ${cards} exactly, and somebody has to fail.`
+          ? `You call last, so the calls must not add up to ${cards} exactly — somebody has to fail.`
           : `How many of ${tricks} will you take? Nought is a call.`,
       standing: said === '' ? null : `${said} · ${calledSoFar(state)} of ${cards} called`,
-      stakes: openTo(state, caller),
+      stakes: ladderFor(state),
+      // The hook: on the ladder, and the one number this player may not say.
+      ...(hooked !== null
+        ? {
+            barred: {
+              stake: hooked,
+              note: `${hooked} would make the calls add up to ${cards} exactly.`,
+            },
+          }
+        : {}),
       stakePrefix: CALL_PREFIX,
       declareLabel: 'Call',
       stakeLabel: 'Tricks',

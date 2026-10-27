@@ -79,7 +79,10 @@ function call(t: Table, playerId: PlayerId, tricks: number): void {
 function called(t: Table): Table {
   while (judgement.auction!(t.state)) {
     const auction = judgement.auction!(t.state)!;
-    call(t, auction.bidder, auction.stakes[0]!);
+    // The lowest rung this player may actually stand on: nought, unless
+    // nought is the one the hook has taken away from them.
+    const open = auction.stakes.filter((n) => n !== auction.barred?.stake);
+    call(t, auction.bidder, open[0]!);
   }
   return t;
 }
@@ -463,10 +466,7 @@ describe('the hook', () => {
 
     const auction = judgement.auction!(t.state)!;
     expect(auction.bidder).toBe(dealer);
-    expect(auction.stakes).not.toContain(7);
-    expect(auction.stakes).toContain(6);
-    expect(auction.stakes).toContain(8);
-    expect(auction.prompt).toMatch(/cannot call 7/);
+    expect(auction.barred).toEqual({ stake: 7, note: expect.stringContaining('7') });
 
     // And the engine refuses it, not merely the panel.
     expect(t.submit(dealer, { type: 'choose', option: 'call:7' })).toMatchObject({ ok: false });
@@ -474,19 +474,47 @@ describe('the hook', () => {
     expect(stage(t.state)).toBe('playing');
   });
 
+  /**
+   * The ladder keeps the hooked number, and names it instead.
+   *
+   * Cutting it out made the numbers on offer run 0, 2, 3 -- so a player
+   * stepping up once from nothing landed on two having asked for one, which
+   * is indistinguishable from the wrong call being registered.
+   */
+  it('leaves the ladder whole and says which rung is barred', () => {
+    const t = dealt();
+    const order = [...t.state.inPlay];
+
+    // Twelve of thirteen called, so the dealer is hooked off exactly one.
+    const calls = [5, 4, 3];
+    order.slice(0, -1).forEach((playerId, i) => call(t, playerId, calls[i]!));
+
+    const auction = judgement.auction!(t.state)!;
+    expect(auction.barred?.stake).toBe(1);
+    // Every number from none to all of them, with no hole in it.
+    expect(auction.stakes).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    // Which is what makes one step up from nothing mean one.
+    expect(auction.stakes[1]).toBe(1);
+  });
+
+  it('bars nothing when nobody is hooked', () => {
+    const t = dealt();
+    expect(judgement.auction!(t.state)!.barred).toBeUndefined();
+  });
+
   it('falls on nobody but the last to speak', () => {
     const t = dealt();
     const order = [...t.state.inPlay];
 
-    // Everybody before the dealer is offered the whole ladder, nought to
-    // thirteen: only the last to speak knows what the total will be.
+    // Everybody before the dealer has nothing barred: only the last to speak
+    // knows what the total will be.
     for (const playerId of order.slice(0, -1)) {
       const auction = judgement.auction!(t.state)!;
       expect(auction.stakes).toHaveLength(14);
-      expect(auction.prompt).not.toMatch(/cannot call/);
+      expect(auction.barred).toBeUndefined();
       call(t, playerId, 2);
     }
-    expect(judgement.auction!(t.state)!.stakes).toHaveLength(13);
+    expect(judgement.auction!(t.state)!.barred?.stake).toBe(7);
   });
 
   it('does not apply when the hand is already over-called', () => {
@@ -499,7 +527,7 @@ describe('the hook', () => {
 
     const auction = judgement.auction!(t.state)!;
     expect(auction.stakes).toHaveLength(14);
-    expect(auction.prompt).not.toMatch(/cannot call/);
+    expect(auction.barred).toBeUndefined();
   });
 
   it('guarantees somebody fails, whatever is called', () => {
@@ -510,7 +538,10 @@ describe('the hook', () => {
       const rng = makeRng(seed + 500);
       while (judgement.auction!(t.state)) {
         const auction = judgement.auction!(t.state)!;
-        const pick = auction.stakes[Math.floor(rng.next() * auction.stakes.length)]!;
+        // Everything on the ladder except the rung this player is barred
+        // from -- which is what the panel offers, and what the engine allows.
+        const open = auction.stakes.filter((n) => n !== auction.barred?.stake);
+        const pick = open[Math.floor(rng.next() * open.length)]!;
         call(t, auction.bidder, pick);
       }
 

@@ -16,6 +16,7 @@ import {
   type Suit,
 } from '@patte/core';
 import { useState } from 'react';
+import { openingStake, questionOf, stepStake } from '../auction.js';
 import { copyText } from '../clipboard.js';
 import type { Connection } from '../net.js';
 import { seatColour } from '../players.js';
@@ -529,12 +530,22 @@ function Auction({
   call: AuctionCall;
 }): React.JSX.Element {
   const mine = call.bidder === you;
-  const [at, setAt] = useState(0);
-  // The ladder shortens as the bidding rises, so an index held from a previous
-  // turn can point past the end of it.
   const stakes = call.stakes;
-  const index = Math.min(at, Math.max(stakes.length - 1, 0));
-  const stake = stakes[index];
+  // Kept as the number itself, tied to the question it answers -- never as an
+  // index, which means a different number the moment the ladder changes.
+  const question = questionOf(call);
+  const [picked, setPicked] = useState<{ question: string; stake: number } | null>(null);
+  const stake = picked?.question === question ? picked.stake : openingStake(stakes, call.barred);
+  const step = (delta: number): void =>
+    setPicked((previous) => {
+      const from =
+        previous?.question === question ? previous.stake : openingStake(stakes, call.barred);
+      if (from === undefined) return previous;
+      return { question, stake: stepStake(stakes, from, delta) };
+    });
+  // Allowed by the rules but not to this player, this time. The server
+  // refuses it too; this is so the panel can say why before they try.
+  const blocked = call.barred !== undefined && stake === call.barred.stake;
 
   return (
     <div className="panel panel--soft">
@@ -554,14 +565,11 @@ function Auction({
               <label className="rounds auction__stake">
                 {call.stakeLabel ?? 'Stake'}
                 <span className="rounds__stepper">
-                  <button onClick={() => setAt(Math.max(0, index - 1))} aria-label="a smaller stake">
+                  <button onClick={() => step(-1)} aria-label="a smaller stake">
                     −
                   </button>
                   <output>{stake}</output>
-                  <button
-                    onClick={() => setAt(Math.min(stakes.length - 1, index + 1))}
-                    aria-label="a larger stake"
-                  >
+                  <button onClick={() => step(1)} aria-label="a larger stake">
                     +
                   </button>
                 </span>
@@ -572,7 +580,9 @@ function Auction({
               {stake !== undefined && (
                 <button
                   className="primary"
+                  disabled={blocked}
                   onClick={() => {
+                    if (blocked) return;
                     net.submit({ type: 'choose', option: `${call.stakePrefix}${stake}` });
                     sounds.slide();
                   }}
@@ -601,6 +611,11 @@ function Auction({
           </>
         )}
 
+        {/* The one rung nobody may stand on explains itself where the player
+            is actually looking, rather than only in the prompt above. */}
+        {mine && blocked && call.barred && (
+          <p className="panel__hint panel__hint--barred">{call.barred.note}</p>
+        )}
         {call.hint && <p className="panel__hint">{call.hint}</p>}
       </div>
     </div>

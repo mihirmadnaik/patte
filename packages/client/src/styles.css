@@ -1171,6 +1171,8 @@ html, body, #root {
 
 /* The stake stepper, which is the rounds stepper doing a second job. */
 .auction__stake { margin-top: 4px; }
+/* The rung the rules put out of reach, said where the stepper is. */
+.panel__hint--barred { color: #ffb4a2; }
 .auction__stake output { min-width: 2.4em; }
 
 /* --- status readout ------------------------------------------------------ */

@@ -107,6 +107,15 @@ export interface AuctionCall {
    */
   hold?: { stake: number; label: string };
   /**
+   * A number on the ladder that this player, this time, may not say.
+   *
+   * Leaving it out of `stakes` instead would make the stepper skip it in
+   * silence -- step up once from nothing and land on two -- which reads as
+   * the wrong number being registered rather than as a rule. So the ladder
+   * stays whole and the one rung nobody may stand on says why.
+   */
+  barred?: { stake: number; note: string };
+  /**
    * The option to send for saying nothing, where saying nothing is allowed.
    *
    * Omitted by an auction nobody may sit out: in जजमेंट every player must

@@ -803,10 +803,64 @@ describe('वख्खै', () => {
     expect(checkInvariants(t.state)).toEqual([]);
   });
 
+  /**
+   * The withdrawn hand is laid out, not taken away.
+   *
+   * Those four cards decide what everybody else can still hope to hold, and
+   * the declarer's own side knew them all along -- keeping them from the
+   * opponents handed one side information the other had. Stacked face down,
+   * they also read as having left the game rather than as being laid out of
+   * play.
+   */
+  it('lays the withdrawn hand face up for the whole table', () => {
+    const { t, declarer, partner } = alone();
+    const out = t.state.zones['out']!.cards;
+    expect(out).toHaveLength(4);
+
+    for (const cardId of out) {
+      expect(t.state.cards[cardId]!.faceUp, `${cardId} is face down`).toBe(true);
+    }
+
+    // Everybody, not merely the side that already knew.
+    for (const viewer of PLAYERS) {
+      const seen = projectFor(t.state, viewer);
+      for (const cardId of out) {
+        expect(seen.cards[cardId]?.face, `${cardId} hidden from ${viewer}`).not.toBeNull();
+      }
+    }
+
+    // A spectator too: they are public cards now.
+    const table = projectFor(t.state, null);
+    for (const cardId of out) expect(table.cards[cardId]?.face).not.toBeNull();
+
+    expect(declarer).not.toBe(partner);
+    expect(checkInvariants(t.state)).toEqual([]);
+  });
+
+  it('tells the opponents whose hand that is, not only the partner', () => {
+    // The cards are new information to the side that did not hold them, and
+    // nothing else on the table says what they are.
+    const { t, declarer, partner } = alone();
+    const opponents = PLAYERS.filter((id) => id !== declarer && id !== partner);
+    const theirName = t.state.players[partner]!.name;
+    for (const id of opponents) {
+      expect(laddis.instruction!(t.state, id), id).toContain(theirName);
+      expect(laddis.instruction!(t.state, id), id).toContain('face up');
+    }
+  });
+
+  it('will not let anybody pick the withdrawn cards back up', () => {
+    const { t, partner } = alone();
+    const cardId = t.state.zones['out']!.cards[0]!;
+    // Sealed: out of the hand and staying there, however visible.
+    const taken = t.submit(partner, { type: 'move', cardIds: [cardId], toZone: `hand:${partner}` });
+    expect(taken).toMatchObject({ ok: false });
+  });
+
   it('gives the sitting-out partner nothing to do and no way to play', () => {
     const { t, partner } = alone();
     expect(legal(t.state, partner)).toEqual([]);
-    expect(laddis.instruction!(t.state, partner)).toContain('sitting this hand out');
+    expect(laddis.instruction!(t.state, partner)).toContain('sitting out');
   });
 
   it('is played with no trump at all', () => {

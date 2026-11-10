@@ -84,5 +84,24 @@ export function seatColour(state: GameState, playerId: PlayerId): string | undef
  */
 export function cardColour(state: GameState, cardId: string): string | undefined {
   const by = state.playedBy[cardId];
-  return by ? seatColour(state, by) : undefined;
+  if (!by) return undefined;
+
+  /*
+   * A pile belonging to nobody is somewhere cards are *put*, not played.
+   *
+   * The engine records who moved a card wherever it went, which is the right
+   * general rule and the wrong answer here: लॅडीस lays a withdrawn वख्खै
+   * hand out face up, and the move is triggered by the declarer, so all four
+   * of somebody else's cards came out wearing the declarer's colour -- a mark
+   * saying "I played this" on four cards nobody played.
+   *
+   * Keyed on an ownerless *pile* specifically. A pile with an owner is
+   * winnings, and they really did take that trick. Sealed-and-ownerless
+   * would have been the tidier-sounding rule and a wrong one: a बदाम सात row
+   * is both, and every card on it was genuinely played by somebody.
+   */
+  const zone = state.zones?.[state.cards?.[cardId]?.zone ?? ''];
+  if (zone?.kind === 'pile' && zone.owner === null) return undefined;
+
+  return seatColour(state, by);
 }

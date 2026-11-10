@@ -11,13 +11,35 @@ import { describe, expect, it } from 'vitest';
 import { OFFERED_RULESETS, type GameState, type PlayerId } from '@patte/core';
 import { SEAT_COLOURS, cardColour, seatColour } from '../src/players.js';
 
-function table(seats: Record<PlayerId, number>, playedBy: Record<string, PlayerId> = {}): GameState {
+/**
+ * A table with the played cards sitting in the middle, where plays sit.
+ *
+ * `zone` names which zone each played card is in, so that a test can put a
+ * card somewhere other than the trick: where a card is decides whether it
+ * counts as having been played at all.
+ */
+function table(
+  seats: Record<PlayerId, number>,
+  playedBy: Record<string, PlayerId> = {},
+  zone: Record<string, string> = {},
+): GameState {
   return {
     players: Object.fromEntries(
       Object.entries(seats).map(([id, seat]) => [id, { id, name: id, seat, connected: true, isOwner: false }]),
     ),
     seatOrder: Object.keys(seats),
     playedBy,
+    cards: Object.fromEntries(
+      Object.keys(playedBy).map((id) => [id, { id, zone: zone[id] ?? 'trick' }]),
+    ),
+    zones: {
+      trick: { id: 'trick', kind: 'trick', owner: null, cards: [] },
+      'pile:ana': { id: 'pile:ana', kind: 'pile', owner: 'ana', sealed: true, cards: [] },
+      out: { id: 'out', kind: 'pile', owner: null, sealed: true, cards: [] },
+      // बदाम सात's layout: ownerless and sealed like the one above, and
+      // every card on it genuinely played by somebody.
+      'row:H': { id: 'row:H', kind: 'row', owner: null, sealed: true, cards: [] },
+    },
   } as unknown as GameState;
 }
 
@@ -95,6 +117,28 @@ describe('a colour per seat', () => {
     const state = table({ ana: 0, ben: 1 }, { SA: 'ben' });
     expect(cardColour(state, 'SA')).toBe(seatColour(state, 'ben'));
     expect(SEAT_COLOURS).toContain(cardColour(state, 'SA'));
+  });
+
+  it('leaves a card in a shared holding zone unmarked', () => {
+    // लॅडीस lays a withdrawn वख्खै hand out face up, and the engine records
+    // the move against whoever triggered it -- so four of somebody else's
+    // cards would wear the declarer's colour, saying "I played this" about
+    // cards nobody played. An ownerless sealed zone is a holding area.
+    const state = table({ ana: 0, ben: 1 }, { SA: 'ana' }, { SA: 'out' });
+    expect(cardColour(state, 'SA')).toBeUndefined();
+  });
+
+  it('still marks a trick somebody gathered into their own pile', () => {
+    // A pile with an owner is winnings: they really did take that trick.
+    const state = table({ ana: 0, ben: 1 }, { SA: 'ana' }, { SA: 'pile:ana' });
+    expect(cardColour(state, 'SA')).toBe(seatColour(state, 'ana'));
+  });
+
+  it('still marks a card played onto a shared layout row', () => {
+    // Sealed and ownerless, exactly like the holding pile above -- and a
+    // play, which is why the rule cannot be about sealing.
+    const state = table({ ana: 0, ben: 1 }, { H8: 'ben' }, { H8: 'row:H' });
+    expect(cardColour(state, 'H8')).toBe(seatColour(state, 'ben'));
   });
 
   it('leaves a card nobody has played unmarked', () => {

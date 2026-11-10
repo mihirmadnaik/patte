@@ -661,26 +661,39 @@ function trumpZone(): Zone {
 }
 
 /**
- * Where a vakkhai partner's hand waits out the deal.
+ * Where a vakkhai partner's hand sits out the deal, face up.
  *
- * A pile, which is what it is: cards that have gone somewhere sealed and
- * face down and are not coming back this hand. Saying so rather than calling
- * it a meld is what keeps the table honest about it -- the last card played
- * wears a ring, and withdrawing four cards is not a play, so ringing them
- * points at the one thing on the table that did not just happen.
+ * Face up, and spread, because those four cards are information the whole
+ * table is entitled to. A वख्खै is a wager that one player can take every
+ * trick against two, and what the withdrawn hand held changes what everyone
+ * else can still hope to hold -- the declarer's partner knew it all along,
+ * and keeping it from the opponents told them something it should not. It
+ * was stacked face down here, which read as the cards having been taken out
+ * of the game rather than laid out of play.
+ *
+ * Still a pile and still sealed: they are out of the hand and nobody may
+ * pick them up. Saying `pile` rather than meld is also what keeps the
+ * last-played ring off them -- withdrawing four cards is not a play, and
+ * ringing them would point at the one thing on the table that did not just
+ * happen.
  */
 function outZone(): Zone {
   return {
     id: OUT_ZONE,
     kind: 'pile',
     owner: null,
-    layout: 'stack',
-    faceDownVisibleTo: 'none',
+    layout: 'spread',
+    // Moot while they are face up, and the honest value for cards that are
+    // nobody's secret.
+    faceDownVisibleTo: 'all',
     openToOthers: false,
     sealed: true,
     cards: [],
-    pos: { x: 0.86, y: 0.2 },
-    label: 'out',
+    // Clear of the stock at the left and above the trick in the middle:
+    // there is nowhere for four face-up cards to go that is not somewhere,
+    // and this is the band the hand is not using.
+    pos: { x: 0.5, y: 0.26 },
+    label: 'sitting out',
   };
 }
 
@@ -849,8 +862,15 @@ export const laddis: Ruleset = {
     }
 
     const declarer = declarerOf(state);
-    if (declarer && stage(state) === 'playing' && partnersOf(state, declarer).includes(playerId)) {
-      return 'You are sitting this hand out — your cards are withdrawn';
+    if (declarer && stage(state) === 'playing') {
+      // Four face-up cards appear in the middle of the table when somebody
+      // goes alone, and nothing else on screen says whose they are or why
+      // they are not in play. Said to everyone, not only to whoever is
+      // sitting out, since it is the opponents the sight is new to.
+      const sitting = partnersOf(state, declarer);
+      if (sitting.includes(playerId)) return 'You are sitting out — your hand is face up';
+      const name = nameOf(state, sitting[0] ?? null);
+      return `${name} is sitting out — their hand is face up`;
     }
 
     return null;
@@ -1280,11 +1300,24 @@ function declareAlone(state: GameState, won: { playerId: PlayerId; stake: number
     }
   }
 
+  const withdrawn = placements.map((placement) => placement.cardId);
+
   return [
     { type: 'gameDataSet', key: 'stake', value: won.stake },
     { type: 'gameDataSet', key: 'vakkhai', value: won.playerId },
     { type: 'gameDataSet', key: 'stage', value: 'playing' },
     ...(placements.length > 0 ? [{ type: 'cardsMoved' as const, placements }] : []),
+    // Turned over as they are laid out: what the partner was holding is a
+    // fact the table plays the rest of the hand against, and only the
+    // declarer's own side knew it.
+    ...(withdrawn.length > 0
+      ? [
+          {
+            type: 'cardsFlipped' as const,
+            flips: withdrawn.map((cardId) => ({ cardId, faceUp: true })),
+          },
+        ]
+      : []),
     { type: 'turnSet', playerId: won.playerId },
   ];
 }

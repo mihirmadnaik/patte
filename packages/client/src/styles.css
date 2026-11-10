@@ -998,6 +998,19 @@ html, body, #root {
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
   z-index: 9900;
   text-align: left;
+  /*
+   * Tall matches have to stay reachable.
+   *
+   * The scoreboard inside this grows a row a round, and nothing bounded it:
+   * past about a dozen rounds the last rows and the totals ran off the
+   * bottom of the window with no way to get at them. जजमेंट made that easy
+   * to hit -- a three-player ladder is thirty-four rounds -- but any game
+   * played long enough got there. Bounded by what is left of the window
+   * below the toolbar this hangs from, less a little breathing room.
+   */
+  max-height: calc(100dvh - var(--toolbar-h, 56px) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .menu__row {
@@ -1130,20 +1143,26 @@ html, body, #root {
 .suits__glyph { font-size: 22px; line-height: 1; }
 
 .trumpstrip {
-  position: absolute;
   /*
-   * Below the toolbar, not twelve pixels down the window.
+   * A row of its own, under the toolbar, on every screen.
    *
-   * Nothing between here and the viewport is positioned, so this is placed
-   * against the window itself -- and the toolbar, which is painted above it,
-   * is taller than twelve pixels. A single-row strip therefore sat entirely
-   * behind the toolbar on every screen wide enough to keep it floating. On a
-   * phone it is taken out of this rule and put in the flow instead, which is
-   * why it was only ever visible there.
+   * It used to float: absolutely placed twelve pixels down, which -- since
+   * nothing between it and the viewport is positioned -- meant twelve pixels
+   * down the *window*, behind a toolbar painted above it and taller than
+   * that. Invisible, in other words, on every screen wide enough not to take
+   * the phone treatment. Bringing it out from behind the toolbar then put it
+   * straight on top of the opponents' name plates, which live in the band
+   * directly below: in a four-handed game it covered the middle one.
+   *
+   * So it takes a row, as it always did on a phone, and nothing can be
+   * underneath it. Centred and still a pill on a wide screen; the phone rule
+   * further down squares it off into a full-width band.
    */
-  top: calc(var(--toolbar-h, 56px) + 12px);
-  left: 50%;
-  transform: translateX(-50%);
+  align-self: center;
+  flex: 0 0 auto;
+  /* Enough below it for the tallest name plate, which carries a second line
+     in a game with partners and so reaches higher than the rest. */
+  margin: 10px 0 6px;
   display: flex;
   align-items: center;
   /* Ten seats is ten readouts, which is wider than a phone. Wrapping keeps
@@ -1339,13 +1358,13 @@ html, body, #root {
   .status { display: none; }
 
   /*
-   * The trump and quota strip stops floating and takes a row of its own. Over
-   * the toolbar it would land on the buttons; there is no spare width for it.
+   * The strip takes a row on every screen now; on a phone it gives up being
+   * a centred pill and spans the width instead, since there is no spare room
+   * either side of it to be centred in.
    */
   .trumpstrip {
-    position: static;
-    transform: none;
-    flex: 0 0 auto;
+    align-self: stretch;
+    margin: 0;
     border-radius: 0;
     border-width: 0 0 1px;
     backdrop-filter: none;

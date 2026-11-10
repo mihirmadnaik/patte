@@ -192,8 +192,11 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         return stackRowPosition(m, index, 5, centre);
       }
 
-      // Won tricks stack up out of the way at the side.
-      if (zone.kind === 'pile') {
+      // Won tricks stack up out of the way at the side -- unless the pile
+      // says where it wants to be, which a pile that is meant to be read
+      // does. लॅडीस lays a withdrawn वख्खै hand out in the open, and the
+      // side of the table is where things go to be ignored.
+      if (zone.kind === 'pile' && !zone.pos) {
         const mine = zone.owner === you;
         return { x: bounds.width - m.cardW * 0.9, y: mine ? usable - m.cardH : m.cardH * 0.75 };
       }
@@ -219,7 +222,12 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
     // A pile of won tricks is face down and sealed, so it carries no
     // information a count does not. On a phone there is nowhere to put it that
     // is not already spoken for, so it becomes a chip instead.
-    if (zone.kind === 'pile' && m.compact) continue;
+    //
+    // A pile laid *face up* is the opposite: it is there precisely to be
+    // read. लॅडीस turns a withdrawn वख्खै hand over for the whole table,
+    // and shrinking that to a chip would hide the thing it exists to show.
+    const readable = zone.cards.some((cardId) => state.cards[cardId]?.faceUp);
+    if (zone.kind === 'pile' && m.compact && !readable) continue;
     // An opponent's hand, when you cannot read it, is the same trade: a fan of
     // identical backs tells you only how many cards they hold, and their name
     // plate already says that in a form you can read at a glance. Drawing it

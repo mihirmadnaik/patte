@@ -51,7 +51,6 @@ import {
   TRICK_ZONE,
   awaitingCollection,
   dealerOf,
-  pileTricks,
   pileZone,
   suitLed,
   trickCards,
@@ -213,8 +212,30 @@ function trickSize(state: GameState): number {
   return Math.max(state.inPlay.length, 1);
 }
 
+/** Where a player's tally of gathered tricks is kept. */
+function wonKey(playerId: PlayerId): string {
+  return `won:${playerId}`;
+}
+
+/**
+ * How many tricks a player has gathered.
+ *
+ * Counted when they take one, rather than worked back out of the size of
+ * their pile. Dividing the pile by the number of players is exact while the
+ * table holds still, and it is the "while" that is the problem: the divisor
+ * is read at the moment the question is asked, so anything that changes how
+ * many people are playing silently rewrites how many tricks everyone is
+ * holding. A player who had taken two was shown three when others left --
+ * their pile had not changed, only the number it was being divided by.
+ *
+ * जजमेंट is the only game here exposed to that, since it is the only one
+ * whose table size is not fixed by the rules, which is why `pileTricks` is
+ * still right for the other three. A tally cannot drift whatever the table
+ * does, and a number this visible should not be a sum worked out afresh each
+ * time anybody looks at it.
+ */
 function tricksTaken(state: GameState, playerId: PlayerId): number {
-  return pileTricks(state, playerId, trickSize(state));
+  return numberAt(state, wonKey(playerId));
 }
 
 /**
@@ -630,6 +651,9 @@ export const judgement: Ruleset = {
       const pile = `pile:${event.by}`;
       const base = state.zones[pile]?.cards.length ?? 0;
       return [
+        // Counted first, so that the gather below -- which is what ends the
+        // hand -- is scored against a tally that already includes this trick.
+        { type: 'gameDataSet', key: wonKey(event.by), value: tricksTaken(state, event.by) + 1 },
         {
           type: 'cardsMoved',
           placements: cards.map((cardId, index) => ({ cardId, toZone: pile, toIndex: base + index })),

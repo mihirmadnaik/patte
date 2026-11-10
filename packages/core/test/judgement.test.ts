@@ -586,14 +586,16 @@ describe('what a hand is worth', () => {
     const seats = [...t.state.inPlay];
     const size = seats.length;
 
-    // A pile of `size` cards is one trick. The cards themselves do not matter
-    // to the scoring, only how many tricks each pile holds.
+    // Tricks taken are a tally the ruleset keeps, not something read back out
+    // of the size of a pile, so the fixture states them directly. The cards
+    // still move, because it is a gather that ends the hand.
     const state = structuredClone(t.state) as GameState;
     state.gameData['stage'] = 'playing';
     const spare = Object.keys(state.cards);
     let next = 0;
     for (const playerId of seats) {
       state.gameData[`bid:${playerId}`] = calls[playerId] ?? 0;
+      state.gameData[`won:${playerId}`] = taken[playerId] ?? 0;
       const pile = state.zones[`pile:${playerId}`]!;
       for (let i = 0; i < (taken[playerId] ?? 0) * size; i++) {
         const cardId = spare[next++]!;
@@ -733,6 +735,78 @@ describe('playing a hand', () => {
     expect(offer.option).toBe(TAKE);
     const theirCall = t.state.gameData[`bid:${winner}`] as number;
     expect(offer.note).toBe(theirCall === 0 ? 'That puts you past your call' : 'You won that trick');
+  });
+});
+
+describe('the tricks-won tally', () => {
+  it('matches the tricks actually taken, after every collection', () => {
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const t = dealt(seed);
+      const truth: Record<PlayerId, number> = Object.fromEntries(PLAYERS.map((p) => [p, 0]));
+      called(t);
+
+      for (let step = 0; step < 400 && t.state.phase === 'playing'; step += 1) {
+        const winner = judgement.awaitingChoice!(t.state);
+        if (winner && t.state.zones[TRICK_ZONE]!.cards.length > 0) {
+          t.submit(winner, { type: 'choose', option: TAKE });
+          truth[winner] = (truth[winner] ?? 0) + 1;
+          for (const row of judgement.standings!(t.state) ?? []) {
+            expect(row.won, `seed ${seed}: ${row.playerId}`).toBe(truth[row.playerId]);
+          }
+          continue;
+        }
+        const turn = t.state.turn!;
+        const playable = legal(t.state, turn);
+        if (playable.length === 0) break;
+        t.submit(turn, {
+          type: 'move',
+          cardIds: [playable[0]!],
+          toZone: TRICK_ZONE,
+          toIndex: t.state.zones[TRICK_ZONE]!.cards.length,
+        });
+      }
+    }
+  });
+
+  /**
+   * What somebody has won cannot change because somebody else left.
+   *
+   * The tally used to be worked back out of the size of a pile, divided by
+   * how many people were playing *at the moment of asking*. जजमेंट is the
+   * only game here whose table size is not fixed, so it was the only one
+   * where that divisor could move -- and when it did, every tricks-won
+   * number on the table silently changed. A player holding two was shown
+   * three without having won anything.
+   */
+  it('does not change when other players leave the table', () => {
+    const t = dealt(1);
+    called(t);
+
+    const took: PlayerId[] = [];
+    for (let step = 0; step < 400 && took.length < 4; step += 1) {
+      const winner = judgement.awaitingChoice!(t.state);
+      if (winner && t.state.zones[TRICK_ZONE]!.cards.length > 0) {
+        t.submit(winner, { type: 'choose', option: TAKE });
+        took.push(winner);
+        continue;
+      }
+      const turn = t.state.turn!;
+      const playable = legal(t.state, turn);
+      if (playable.length === 0) break;
+      t.submit(turn, {
+        type: 'move',
+        cardIds: [playable[0]!],
+        toZone: TRICK_ZONE,
+        toIndex: t.state.zones[TRICK_ZONE]!.cards.length,
+      });
+    }
+
+    const before = new Map((judgement.standings!(t.state) ?? []).map((row) => [row.playerId, row.won]));
+    for (const playerId of PLAYERS.filter((id) => !took.includes(id))) t.removePlayer(playerId);
+
+    for (const row of judgement.standings!(t.state) ?? []) {
+      expect(row.won, `${row.playerId} changed when others left`).toBe(before.get(row.playerId));
+    }
   });
 });
 

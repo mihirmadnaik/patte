@@ -195,6 +195,15 @@ export function trickWinner(
   order: readonly PlayerId[],
   /** Null when the hand has no trump at all, as a वख्खै does. */
   trump: Suit | null,
+  /**
+   * Whether the card at this position in the trick counts as a trump.
+   *
+   * Defaults to the plain answer -- its suit is the trump suit -- which is
+   * what three of the four trick games want. लॅडीस passes its own, because a
+   * hand there starts with no trump anybody may know and acquires one partway
+   * through, and a card put down before that moment was not played as a trump.
+   */
+  isTrump?: (cardId: CardId, index: number) => boolean,
 ): PlayerId | null {
   const seats = order.length;
   const closedAt = order.indexOf(lastActor);
@@ -204,14 +213,19 @@ export function trickWinner(
   const led = state.cards[cards[0]!]?.face?.suit;
   if (!led) return null;
 
-  const trumpy = (cardId: CardId): boolean =>
-    trump !== null && state.cards[cardId]?.face?.suit === trump;
+  const trumpy =
+    isTrump ??
+    ((cardId: CardId): boolean => trump !== null && state.cards[cardId]?.face?.suit === trump);
 
   let best = 0;
   for (let i = 1; i < cards.length; i++) {
     const challenger = state.cards[cards[i]!];
     const leader = state.cards[cards[best]!];
-    if (challenger && leader && stronger(challenger, leader, led, trumpy(cards[i]!), trumpy(cards[best]!))) {
+    if (
+      challenger &&
+      leader &&
+      stronger(challenger, leader, led, trumpy(cards[i]!, i), trumpy(cards[best]!, best))
+    ) {
       best = i;
     }
   }

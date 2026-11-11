@@ -606,6 +606,43 @@ describe('the hidden trump', () => {
     expect(checkInvariants(t.state)).toEqual([]);
   });
 
+  it('records the moment it came up, down to the cards already on the table', () => {
+    // The two numbers the demotion is read from, taken from a real ask rather
+    // than written in by hand: whatever was on the table when the question
+    // was asked was played before the answer.
+    const t = playing(3);
+    const gathered = (): number =>
+      PLAYERS.reduce((n, id) => n + (t.state.zones[`pile:${id}`]?.cards.length ?? 0), 0) /
+      PLAYERS.length;
+    let down: number | null = null;
+    let tricks = 0;
+
+    for (let i = 0; i < 40 && down === null && t.state.phase === 'playing'; i++) {
+      const actor = t.state.turn!;
+      if (laddis.inlineChoice!(t.state, actor)?.option === ASK) {
+        down = t.state.zones[TRICK_ZONE]!.cards.length;
+        tricks = gathered();
+        say(t, actor, ASK);
+        break;
+      }
+      const waiting = laddis.awaitingChoice?.(t.state) ?? null;
+      if (waiting) {
+        say(t, waiting, TAKE);
+        continue;
+      }
+      const options = legal(t.state, actor);
+      if (options.length === 0) break;
+      const played = t.submit(actor, { type: 'move', cardIds: [options[0]!], toZone: TRICK_ZONE });
+      if (!played.ok) throw new Error(played.reason);
+    }
+
+    expect(down, 'no void hand turned up in this deal').not.toBeNull();
+    // Asked by somebody who could not follow, so the trick was under way.
+    expect(down).toBeGreaterThan(0);
+    expect(t.state.gameData['revealAt']).toBe(down);
+    expect(t.state.gameData['revealTrick']).toBe(tricks);
+  });
+
   it('comes back by itself the moment the caller has nothing left to play', () => {
     /*
      * The caller holds seven cards for eight tricks, the eighth being the one
@@ -728,15 +765,16 @@ describe('turning the trump up mid-trick', () => {
     expect(winner).toEqual([{ type: 'turnSet', playerId: turns[2] }]);
   });
 
-  it('makes a card already lying in the trick a trump too', () => {
+  it('leaves the cards already lying in the trick as the discards they were', () => {
     /*
      * The case this rule exists for. A heart is led, somebody throws the king
-     * of spades as a plain discard, the next player cannot follow and calls
-     * for the trump -- spades -- and plays the seven.
+     * of spades while the trump is still a secret, the next player cannot
+     * follow and calls for the trump -- spades -- and plays the seven.
      *
-     * Demoting the king because it was put down a moment too early hands the
-     * trick to a seven, which is the wrong answer to look at. Both are
-     * spades, so both are trumps, and the king takes it.
+     * The king was not a trump when it was played, and asking for the trump
+     * is what makes one: so the seven takes it, over a higher card of the
+     * same suit, because the seven is the only card in the trick that was
+     * played as a trump.
      */
     const t = playing();
     const hidden = t.state.zones['trump']!.cards[0]!;
@@ -747,7 +785,8 @@ describe('turning the trump up mid-trick', () => {
     const winner = laddis.after(
       {
         ...t.state,
-        gameData: { ...t.state.gameData, trump },
+        // Turned up with two cards already down, in this trick.
+        gameData: { ...t.state.gameData, trump, revealTrick: 0, revealAt: 2 },
         zones: {
           ...t.state.zones,
           [TRICK_ZONE]: { ...t.state.zones[TRICK_ZONE]!, cards: ['x1', 'x2', 'x3', 'x4'] },
@@ -757,7 +796,7 @@ describe('turning the trump up mid-trick', () => {
           x1: faced('x1', led, '9'),
           // Thrown while the trump was still face down.
           x2: faced('x2', trump, 'K'),
-          // Thrown after it was turned up.
+          // Played by whoever asked for it, so a trump.
           x3: faced('x3', trump, '7'),
           x4: faced('x4', led, '8'),
         },
@@ -765,13 +804,52 @@ describe('turning the trump up mid-trick', () => {
       { type: 'cardsMoved', placements: [{ cardId: 'x4', toZone: TRICK_ZONE, toIndex: 3 }], seq: 99, at: 0, actor: turns[3]! },
     );
 
+    expect(winner).toEqual([{ type: 'turnSet', playerId: turns[2] }]);
+  });
+
+  it('counts both of them once the trick that revealed it is over', () => {
+    // The demotion is about one trick and one moment. In every trick after
+    // it, a card of the trump suit is simply a trump.
+    const t = playing();
+    const hidden = t.state.zones['trump']!.cards[0]!;
+    const trump = t.state.cards[hidden]!.face!.suit;
+    const turns = t.state.inPlay;
+    const led: Suit = trump === 'H' ? 'S' : 'H';
+
+    const winner = laddis.after(
+      {
+        ...t.state,
+        // Turned up in the first trick; this is a later one, so the two
+        // numbers no longer bite.
+        gameData: { ...t.state.gameData, trump, revealTrick: 0, revealAt: 2 },
+        zones: {
+          ...t.state.zones,
+          [TRICK_ZONE]: { ...t.state.zones[TRICK_ZONE]!, cards: ['x1', 'x2', 'x3', 'x4'] },
+          [`pile:${turns[0]!}`]: {
+            ...t.state.zones[`pile:${turns[0]!}`]!,
+            cards: ['p1', 'p2', 'p3', 'p4'],
+          },
+        },
+        cards: {
+          ...t.state.cards,
+          p1: faced('p1', led, '2'),
+          p2: faced('p2', led, '3'),
+          p3: faced('p3', led, '4'),
+          p4: faced('p4', led, '5'),
+          x1: faced('x1', led, '9'),
+          x2: faced('x2', trump, 'K'),
+          x3: faced('x3', trump, '7'),
+          x4: faced('x4', led, '8'),
+        },
+      } as GameState,
+      { type: 'cardsMoved', placements: [{ cardId: 'x4', toZone: TRICK_ZONE, toIndex: 3 }], seq: 99, at: 0, actor: turns[3]! },
+    );
+
+    // Both are trumps now, so the king takes it.
     expect(winner).toEqual([{ type: 'turnSet', playerId: turns[1] }]);
   });
 
-  it('does not reopen a trick that has already been gathered', () => {
-    // Nothing records when the trump came up, because nothing needs to: a
-    // finished trick is face down in somebody's pile and is never judged
-    // again.
+  it('writes down when it came up, and not before', () => {
     const t = playing();
     expect(t.state.gameData['revealTrick']).toBeUndefined();
     expect(t.state.gameData['revealAt']).toBeUndefined();

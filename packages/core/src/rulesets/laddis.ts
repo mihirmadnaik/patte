@@ -291,24 +291,41 @@ function revealedTrump(state: GameState): Suit | null {
   return typeof named === 'string' && TRUMP_SUITS.includes(named as Suit) ? (named as Suit) : null;
 }
 
-/*
- * Turning the trump up applies to the trick it is turned up in, cards and all.
+/**
+ * Whether the card at this position in the trick being judged is a trump.
  *
- * It used to demote the ones already lying there: a card of the trump suit
- * played while the suit was still a secret had been played as a discard, so
- * it was held not to be a trump. That reads well as a sentence and plays
- * terribly. Lead a heart, somebody throws the king of spades, the next player
- * cannot follow and calls for the trump -- spades -- and then takes the trick
- * with the seven. A seven beating a king, because the king was put down a
- * moment too early.
+ * A card of the trump suit played before the reveal was never a trump: the
+ * suit was a secret when it went down, so it was played as a discard and is
+ * judged as one. Trumpiness is therefore a question about *when* as much as
+ * about what, and the reveal is recorded as two numbers -- the trick it
+ * happened in, and how many cards were already lying there -- which answers
+ * it exactly, including for the one trick that was half played when the
+ * trump came up.
  *
- * So the suit is simply trump from the moment it is turned up, for every card
- * in the trick being judged. Tricks already gathered are not reopened: they
- * were won fairly under what the table knew at the time, and they are face
- * down in somebody's pile. That is the whole of what "played before the
- * reveal" means now, and it needs nothing written down to know it -- which is
- * why `trickWinner` is back to being told a suit and nothing else.
+ * This is the table's rule, chosen with its consequence known: lead a heart,
+ * somebody throws the king of spades, the next player cannot follow and calls
+ * for the trump, which is spades, and then takes the trick with the seven.
+ * The seven beats the king because the king was put down a moment too early,
+ * and that is the point -- it was not a trump when it was played, and asking
+ * for the trump is what makes one.
+ *
+ * Tricks already gathered are never reopened. They were won under what the
+ * table knew at the time and they are face down in somebody's pile.
  */
+function trumpedAt(state: GameState): (cardId: CardId, index: number) => boolean {
+  const trump = revealedTrump(state);
+  if (!trump) return () => false;
+
+  const from = numberAt(state, 'revealTrick');
+  const after = numberAt(state, 'revealAt');
+  const now = tricksPlayed(state);
+
+  return (cardId: CardId, index: number): boolean => {
+    if (state.cards[cardId]?.face?.suit !== trump) return false;
+    if (now !== from) return now > from;
+    return index >= after;
+  };
+}
 
 /**
  * Whether this player may demand the trump be turned up.
@@ -760,7 +777,7 @@ export const laddis: Ruleset = {
       'Four players in fixed pairs, partners across the table. Thirty-two cards — ace down to seven, ace high.',
       'Four cards each to start. Anybody may declare वख्खै on them; if nobody does, a trump is set and four more cards go out for a hand of eight tricks.',
       'If everybody passes, the player to the dealer\'s left sets one of their own cards face down. Its suit is trump and they alone know it.',
-      'Nothing is a trump until the card is turned up. Anybody who cannot follow suit may ask for it on their turn, and from that moment the suit is trump — including for the cards already lying in the trick it was turned up in.',
+      'Nothing is a trump until the card is turned up. Anybody who cannot follow suit may ask for it on their turn, and from that moment the suit is trump — but only from that moment. Cards of that suit already lying in the trick were played as discards and are judged as discards.',
       'Tricks already gathered are not reopened. They were won under what the table knew at the time.',
       'Four 7s is the four worst cards in the pack at once. Whoever is dealt them may throw the hand in, and the cards go back for a fresh deal with nothing scored.',
       'The dealers need four of the eight tricks; the other side needs five. Four and five out of eight means one side always gets there, so the hand ends the moment either does.',
@@ -1312,7 +1329,14 @@ export const laddis: Ruleset = {
     // Everyone has played: the trick is decided, and the cards stay where they
     // are until its winner takes them.
     if (inTrick.length === size) {
-      const winner = trickWinner(state, inTrick, player, turns, revealedTrump(state));
+      const winner = trickWinner(
+        state,
+        inTrick,
+        player,
+        turns,
+        revealedTrump(state),
+        trumpedAt(state),
+      );
       return winner ? [{ type: 'turnSet', playerId: winner }] : [];
     }
 
@@ -1458,6 +1482,11 @@ function revealTrump(state: GameState): EventBody[] {
   const at = state.zones[hand]?.cards.length ?? 0;
 
   return [
+    // When it happened, which is what tells a card played as a discard from a
+    // card played as a trump: the trick it came up in, and how much of that
+    // trick was already on the table.
+    { type: 'gameDataSet', key: 'revealTrick', value: tricksPlayed(state) },
+    { type: 'gameDataSet', key: 'revealAt', value: trickCards(state).length },
     // Which card it was. Written only now, when the suit becomes public
     // anyway -- `gameData` is readable by every client, so naming the card
     // while it was still face down would have given the whole thing away.

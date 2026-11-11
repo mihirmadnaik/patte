@@ -33,6 +33,9 @@ const PLAYERS = ['ana', 'ben', 'cal', 'dev'];
 
 const ASK = 'ask';
 const PASS = 'pass';
+const NO_OFFER = 'no-offer';
+const STAND_DOWN = 'stand-down';
+const REFUSE = 'refuse-offer';
 
 function table(seed = 1, players = PLAYERS): Table {
   let clock = 1_700_000_000_000;
@@ -82,8 +85,18 @@ function passRound(t: Table): void {
   }
 }
 
-/** Pass the bidding out and set the caller's first card aside as trump. */
-function playing(seed = 1): Table {
+/** Nobody offers, which is what most hands hear four times. */
+function offerRound(t: Table): void {
+  for (let i = 0; i < PLAYERS.length; i++) {
+    if (stage(t.state) !== 'offering') break;
+    const bidder = laddis.auction!(t.state)?.bidder;
+    if (!bidder) break;
+    say(t, bidder, NO_OFFER);
+  }
+}
+
+/** Set the caller's card aside as trump, leaving the offers unanswered. */
+function offering(seed = 1): Table {
   const t = dealt(seed);
   passRound(t);
   const caller = t.state.inPlay[0]!;
@@ -92,9 +105,24 @@ function playing(seed = 1): Table {
   return t;
 }
 
+/**
+ * A hand under way on the hidden trump: bidding passed out, trump set, and
+ * nobody offering. The ordinary hand, which is what most of this suite is
+ * about.
+ */
+function playing(seed = 1): Table {
+  const t = offering(seed);
+  offerRound(t);
+  return t;
+}
+
 /** Play the first legal card for whoever is on turn, taking tricks as they fall. */
 function playOut(t: Table, maxPlays = 100): void {
   for (let i = 0; i < maxPlays && t.state.phase === 'playing'; i++) {
+    if (stage(t.state) === 'offering') {
+      offerRound(t);
+      continue;
+    }
     const waiting = laddis.awaitingChoice?.(t.state) ?? null;
     if (waiting) {
       say(t, waiting, TAKE);
@@ -1328,7 +1356,7 @@ describe('four sevens', () => {
     expect(laddis.redealClaim!(t.state, 'ana')).not.toBeNull();
   });
 
-  it('plays on when the offer is turned down, and does not ask again', () => {
+  it('plays on when the fresh deal is turned down, and does not ask again', () => {
     const t = dealtFourSevens('ana');
     passRound(t);
     say(t, 'ana', 'play-on');
@@ -1339,6 +1367,9 @@ describe('four sevens', () => {
     // The hand goes ahead from where it was held: the trump, then the lead.
     const caller = t.state.inPlay[0]!;
     expect(t.submit(caller, { type: 'move', cardIds: [hand(t.state, caller)[0]!], toZone: 'trump' }).ok).toBe(true);
+    // The deal runs into the offer stage; nobody offers, so it runs out again.
+    expect(stage(t.state)).toBe('offering');
+    offerRound(t);
     expect(stage(t.state)).toBe('playing');
     const leader = t.state.turn!;
     expect(t.submit(leader, { type: 'move', cardIds: [legal(t.state, leader)[0]!], toZone: TRICK_ZONE }).ok).toBe(true);
@@ -1374,6 +1405,7 @@ describe('four sevens', () => {
     passRound(t);
     const caller = t.state.inPlay[0]!;
     t.submit(caller, { type: 'move', cardIds: [hand(t.state, caller)[0]!], toZone: 'trump' });
+    offerRound(t);
     expect(stage(t.state)).toBe('playing');
 
     const holder = PLAYERS.find((id) => id !== caller)!;
@@ -1451,6 +1483,405 @@ describe('a hand played out', () => {
     playOut(t);
     const rows = laddis.standings!(t.state) ?? [];
     for (const row of rows) expect(row.won).toBeLessThanOrEqual(row.quota);
+  });
+});
+
+describe('the offer', () => {
+  /**
+   * One offer and three silences, which is the shape of almost every offer
+   * that gets made. `from` is a seat in turn order: 0 and 2 are the side not
+   * dealing, 1 and 3 the side that is.
+   */
+  function offered(
+    wager: number,
+    suit: Suit,
+    from = 0,
+    seed = 1,
+  ): { t: Table; by: PlayerId; partner: PlayerId } {
+    const t = offering(seed);
+    const by = t.state.inPlay[from]!;
+    const partner = t.state.inPlay[(from + 2) % PLAYERS.length]!;
+    // The circuit asks all four in turn, the proposer's partner included --
+    // which is why taking an offer after saying nothing is the normal case
+    // rather than a special one.
+    for (const playerId of [...t.state.inPlay]) {
+      say(t, playerId, playerId === by ? `offer:${wager}:${suit}` : NO_OFFER);
+    }
+    return { t, by, partner };
+  }
+
+  function taken(wager: number, suit: Suit, from = 0, seed = 1): { t: Table; by: PlayerId; partner: PlayerId } {
+    const made = offered(wager, suit, from, seed);
+    say(made.t, made.partner, `take-offer:${wager}`);
+    return made;
+  }
+
+  describe('the circuit', () => {
+    it('opens once the hand is dealt, and asks from the dealer\'s left', () => {
+      const t = offering();
+      expect(stage(t.state)).toBe('offering');
+
+      const call = laddis.auction!(t.state)!;
+      expect(call.bidder).toBe(t.state.inPlay[0]);
+      expect(call.stakes).toEqual([6, 7, 8]);
+      expect(call.suitChoice?.suits).toHaveLength(4);
+      expect(call.passOption).toBe(NO_OFFER);
+    });
+
+    it('plays the hand it always played when nobody offers', () => {
+      const t = offering();
+      offerRound(t);
+
+      expect(stage(t.state)).toBe('playing');
+      expect(t.state.turn).toBe(t.state.inPlay[0]);
+      // The trump is still a card nobody may see, and the quotas are the ones
+      // the game has always asked for.
+      expect(t.state.zones['trump']?.cards).toHaveLength(1);
+      expect(t.state.gameData['trump']).toBeUndefined();
+      expect(laddis.standings!(t.state)!.map((row) => row.quota)).toEqual([4, 5]);
+      expect(checkInvariants(t.state)).toEqual([]);
+    });
+
+    it('lets nobody lead while the offers go round', () => {
+      const t = offering();
+      for (const playerId of PLAYERS) expect(legal(t.state, playerId), playerId).toEqual([]);
+
+      const leader = t.state.turn!;
+      expect(
+        t.submit(leader, { type: 'move', cardIds: [hand(t.state, leader)[0]!], toZone: TRICK_ZONE }),
+      ).toMatchObject({ ok: false });
+    });
+
+    it('is one player\'s question at a time', () => {
+      const t = offering();
+      const next = t.state.inPlay[1]!;
+      expect(t.submit(next, { type: 'choose', option: 'offer:6:S' })).toMatchObject({
+        ok: false,
+        reason: 'it is not your call',
+      });
+    });
+
+    it('refuses a wager the rules do not have, and an offer with no suit', () => {
+      const t = offering();
+      const bidder = t.state.inPlay[0]!;
+      expect(t.submit(bidder, { type: 'choose', option: 'offer:5:S' })).toMatchObject({ ok: false });
+      expect(t.submit(bidder, { type: 'choose', option: 'offer:9:S' })).toMatchObject({ ok: false });
+      expect(t.submit(bidder, { type: 'choose', option: 'offer:6' })).toMatchObject({
+        ok: false,
+        reason: 'name the trump you want to play it in',
+      });
+    });
+  });
+
+  describe('taken', () => {
+    it('makes the named suit trump, in the open, from the first card', () => {
+      const { t, by } = taken(6, 'S');
+
+      expect(t.state.gameData['trump']).toBe('S');
+      expect(stage(t.state)).toBe('playing');
+      // The proposer leads: they named the number and the suit, and the lead
+      // is part of what they took on.
+      expect(t.state.turn).toBe(by);
+      expect(checkInvariants(t.state)).toEqual([]);
+    });
+
+    it('puts the hidden card back in the hand it came from, unseen', () => {
+      const t = offering();
+      const caller = t.state.inPlay[0]!;
+      const hidden = t.state.zones['trump']!.cards[0]!;
+      const by = t.state.inPlay[1]!;
+      const partner = t.state.inPlay[3]!;
+      for (const playerId of [...t.state.inPlay]) {
+        say(t, playerId, playerId === by ? 'offer:6:H' : NO_OFFER);
+      }
+      say(t, partner, 'take-offer:6');
+
+      expect(t.state.zones['trump']?.cards).toEqual([]);
+      expect(hand(t.state, caller)).toContain(hidden);
+      // Eight for eight tricks now, where an ordinary hand leaves them seven.
+      expect(hand(t.state, caller)).toHaveLength(8);
+      // And it is an ordinary card: nobody but its owner ever learns it.
+      for (const viewer of PLAYERS.filter((id) => id !== caller)) {
+        expect(projectFor(t.state, viewer).cards[hidden]?.face, `seen by ${viewer}`).toBeNull();
+      }
+      expect(checkInvariants(t.state)).toEqual([]);
+    });
+
+    it('asks the wager of one side and what is left over plus one of the other', () => {
+      const { t, by } = taken(6, 'S');
+      const rows = laddis.standings!(t.state)!;
+      const theirs = rows.find((row) => row.team?.includes(by))!;
+      const others = rows.find((row) => !row.team?.includes(by))!;
+
+      expect(theirs.quota).toBe(6);
+      expect(others.quota).toBe(3);
+      expect(theirs.note).toContain('offers');
+    });
+
+    it('leaves nothing face down to ask about', () => {
+      const { t } = taken(7, 'D');
+      for (const playerId of PLAYERS) {
+        expect(laddis.inlineChoice?.(t.state, playerId)?.option, playerId).not.toBe(ASK);
+      }
+      expect(t.submit(t.state.turn!, { type: 'choose', option: ASK })).toMatchObject({ ok: false });
+    });
+
+    it('never happens in a वख्खै hand, which has no trump to replace', () => {
+      const t = dealt();
+      const declarer = t.state.inPlay[0]!;
+      say(t, declarer, 'vakkhai:16');
+      for (const playerId of t.state.inPlay.slice(1)) say(t, playerId, PASS);
+      expect(stage(t.state)).toBe('playing');
+      expect(laddis.auction!(t.state)).toBeNull();
+    });
+  });
+
+  describe('whose offer it is', () => {
+    it('goes to the higher wager with no run-off', () => {
+      const t = offering();
+      const [low, high] = [t.state.inPlay[0]!, t.state.inPlay[1]!];
+      for (const playerId of [...t.state.inPlay]) {
+        const option = playerId === low ? 'offer:6:S' : playerId === high ? 'offer:7:H' : NO_OFFER;
+        say(t, playerId, option);
+      }
+      expect(t.state.gameData['offerBy']).toBe(high);
+      expect(t.state.gameData['offerWager']).toBe(7);
+      expect(t.state.gameData['offerTrump']).toBe('H');
+      // Asked of the higher bidder's partner.
+      expect(laddis.auction!(t.state)!.bidder).toBe(t.state.inPlay[3]);
+    });
+
+    it('takes the higher of two partners, and asks the other one', () => {
+      const t = offering();
+      const [first, , second] = [t.state.inPlay[0]!, t.state.inPlay[1]!, t.state.inPlay[2]!];
+      for (const playerId of [...t.state.inPlay]) {
+        const option =
+          playerId === first ? 'offer:6:S' : playerId === second ? 'offer:7:C' : NO_OFFER;
+        say(t, playerId, option);
+      }
+      expect(t.state.gameData['offerBy']).toBe(second);
+      expect(laddis.auction!(t.state)!.bidder).toBe(first);
+    });
+
+    it('leaves partners level with whoever spoke first', () => {
+      const t = offering();
+      const [first, , second] = [t.state.inPlay[0]!, t.state.inPlay[1]!, t.state.inPlay[2]!];
+      for (const playerId of [...t.state.inPlay]) {
+        const option =
+          playerId === first || playerId === second ? `offer:6:${playerId === first ? 'S' : 'C'}` : NO_OFFER;
+        say(t, playerId, option);
+      }
+      expect(t.state.gameData['offerBy']).toBe(first);
+      expect(t.state.gameData['offerTrump']).toBe('S');
+    });
+  });
+
+  describe('the run-off', () => {
+    /** Two opposing players at the same number, which is what opens it. */
+    function tied(wager = 6): { t: Table; mine: PlayerId; theirs: PlayerId } {
+      const t = offering();
+      const mine = t.state.inPlay[0]!;
+      const theirs = t.state.inPlay[1]!;
+      for (const playerId of [...t.state.inPlay]) {
+        const option =
+          playerId === mine ? `offer:${wager}:S` : playerId === theirs ? `offer:${wager}:H` : NO_OFFER;
+        say(t, playerId, option);
+      }
+      return { t, mine, theirs };
+    }
+
+    it('opens between the two of them, in seating order', () => {
+      const { t, mine, theirs } = tied();
+      const call = laddis.auction!(t.state)!;
+      expect(call.bidder).toBe(mine);
+      expect(call.stakes).toEqual([6, 7, 8]);
+      expect(call.hold).toEqual({ stake: 6, label: 'Keep your 6' });
+      expect(call.passOption).toBe(STAND_DOWN);
+      // The suit is settled: a raise is a number and nothing else.
+      expect(call.suitChoice).toBeUndefined();
+      expect(t.state.gameData['offerRunoff']).toBe(`${mine}|${theirs}`);
+    });
+
+    it('goes to whoever raises over the other', () => {
+      const { t, mine, theirs } = tied();
+      say(t, mine, 'offer:7');
+      say(t, theirs, 'offer:6');
+      expect(t.state.gameData['offerBy']).toBe(mine);
+      expect(t.state.gameData['offerWager']).toBe(7);
+      // The suit from the offer that opened it, not re-asked.
+      expect(t.state.gameData['offerTrump']).toBe('S');
+    });
+
+    it('hands it over when one of them stands down', () => {
+      const { t, mine, theirs } = tied();
+      say(t, mine, STAND_DOWN);
+      say(t, theirs, 'offer:6');
+      expect(t.state.gameData['offerBy']).toBe(theirs);
+    });
+
+    it('gives it to the side not dealing when neither will move', () => {
+      const { t, mine, theirs } = tied();
+      const dealer = t.state.gameData['dealer'] as PlayerId;
+      say(t, mine, 'offer:6');
+      say(t, theirs, 'offer:6');
+
+      const held = t.state.gameData['offerBy'] as PlayerId;
+      expect([mine, theirs]).toContain(held);
+      // The side under pressure is the side not dealing, which is the one
+      // standing rule the game already had for an argument nobody will end.
+      const dealers = t.state.teams.find((team) => team.includes(dealer))!;
+      expect(dealers).not.toContain(held);
+    });
+
+    it('plays the hand on the hidden trump when both stand down', () => {
+      const { t, mine, theirs } = tied();
+      say(t, mine, STAND_DOWN);
+      say(t, theirs, STAND_DOWN);
+
+      expect(stage(t.state)).toBe('playing');
+      expect(t.state.gameData['trump']).toBeUndefined();
+      expect(t.state.zones['trump']?.cards).toHaveLength(1);
+    });
+  });
+
+  describe('refused', () => {
+    it('falls to the other side\'s offer, and asks their partner', () => {
+      const t = offering();
+      const [under, over] = [t.state.inPlay[0]!, t.state.inPlay[1]!];
+      for (const playerId of [...t.state.inPlay]) {
+        const option = playerId === under ? 'offer:6:S' : playerId === over ? 'offer:7:H' : NO_OFFER;
+        say(t, playerId, option);
+      }
+      // Winning the run-off wins the right to be asked, not the right to stop
+      // anybody else being asked.
+      say(t, t.state.inPlay[3]!, REFUSE);
+
+      expect(t.state.gameData['offerBy']).toBe(under);
+      expect(t.state.gameData['offerWager']).toBe(6);
+      expect(laddis.auction!(t.state)!.bidder).toBe(t.state.inPlay[2]);
+    });
+
+    it('plays the hand on the hidden trump once every offer is refused', () => {
+      const t = offering();
+      const [under, over] = [t.state.inPlay[0]!, t.state.inPlay[1]!];
+      for (const playerId of [...t.state.inPlay]) {
+        const option = playerId === under ? 'offer:6:S' : playerId === over ? 'offer:7:H' : NO_OFFER;
+        say(t, playerId, option);
+      }
+      say(t, t.state.inPlay[3]!, REFUSE);
+      say(t, t.state.inPlay[2]!, REFUSE);
+
+      expect(stage(t.state)).toBe('playing');
+      expect(t.state.turn).toBe(t.state.inPlay[0]);
+      expect(t.state.gameData['trump']).toBeUndefined();
+      expect(laddis.standings!(t.state)!.map((row) => row.quota)).toEqual([4, 5]);
+      expect(checkInvariants(t.state)).toEqual([]);
+    });
+
+    it('is nobody else\'s to refuse', () => {
+      const { t, partner } = offered(6, 'S');
+      const bystander = PLAYERS.find((id) => id !== partner)!;
+      expect(t.submit(bystander, { type: 'choose', option: REFUSE })).toMatchObject({ ok: false });
+    });
+  });
+
+  describe('the book', () => {
+    /** Hand the ruleset a finished hand and read what it posts. */
+    function postOffer(
+      wager: number,
+      made: boolean,
+    ): { scores: Record<PlayerId, number>; winner: PlayerId } {
+      const { t, by } = taken(wager, 'S');
+      const theirs = t.state.teams.find((team) => team.includes(by))!;
+      const opponents = PLAYERS.filter((id) => !theirs.includes(id));
+      const taking = made ? theirs : opponents;
+      const quota = made ? wager : 9 - wager;
+
+      const cards: GameState['cards'] = {};
+      const ids: CardId[] = [];
+      for (let i = 0; i < quota * PLAYERS.length; i++) {
+        const id = `o${i}`;
+        ids.push(id);
+        cards[id] = faced(id, 'S', '9');
+      }
+      const state = {
+        ...t.state,
+        zones: {
+          ...t.state.zones,
+          [`pile:${taking[0]}`]: { ...t.state.zones[`pile:${taking[0]}`]!, cards: ids },
+        },
+        cards: { ...t.state.cards, ...cards },
+      } as GameState;
+
+      const events = laddis.after(state, {
+        type: 'cardsMoved',
+        placements: [{ cardId: ids[0]!, toZone: `pile:${taking[0]}`, toIndex: 0 }],
+        seq: 99,
+        at: 0,
+        actor: taking[0]!,
+      });
+      const ended = events.find((event) => event.type === 'gameEnded') as
+        | { rankings: PlayerId[]; scores: Record<PlayerId, number> }
+        | undefined;
+      expect(ended, 'the hand did not end').toBeDefined();
+      return { scores: ended!.scores, winner: ended!.rankings[0]! };
+    }
+
+    it('posts the wager onto the other side when the offer is made', () => {
+      const { scores, winner } = postOffer(6, true);
+      // Six onto whoever did not take the contract.
+      expect(Math.max(...Object.values(scores))).toBe(6);
+      expect(scores[winner]).toBe(0);
+    });
+
+    it('posts double onto the side that offered when it misses', () => {
+      const { t, by } = taken(6, 'S');
+      const offering_ = t.state.teams.find((team) => team.includes(by))!;
+      const { scores } = postOffer(6, false);
+      for (const playerId of offering_) expect(scores[playerId]).toBe(12);
+    });
+
+    it('ends an offer of eight on the opponents\' first trick, for sixteen', () => {
+      const { t, by } = taken(8, 'S');
+      const offering_ = t.state.teams.find((team) => team.includes(by))!;
+      const { scores } = postOffer(8, false);
+      for (const playerId of offering_) expect(scores[playerId]).toBe(16);
+    });
+
+    it('posts eight when an offer of eight is made', () => {
+      const { scores } = postOffer(8, true);
+      expect(Math.max(...Object.values(scores))).toBe(8);
+    });
+  });
+
+  it('is not asked while a four-7s hand is waiting to be thrown in', () => {
+    // The four can arrive in the second half, which lands the claim in the
+    // middle of the offer stage. The hand it may not be worth playing comes
+    // first: there is no point offering on a hand that is going back.
+    const t = offering();
+    const holder = t.state.inPlay[1]!;
+    const sevens = Object.values(t.state.cards)
+      .filter((card) => card.face?.rank === '7')
+      .map((card) => card.id);
+
+    const zones = structuredClone(t.state.zones);
+    const cards = structuredClone(t.state.cards);
+    const mine = zones[`hand:${holder}`]!;
+    const spare = mine.cards.filter((id) => !sevens.includes(id)).slice(0, sevens.length);
+    for (const zone of Object.values(zones)) zone.cards = zone.cards.filter((id) => !sevens.includes(id));
+    mine.cards = [...mine.cards.filter((id) => !spare.includes(id)), ...sevens];
+    for (const id of sevens) cards[id]!.zone = mine.id;
+    const elsewhere = zones[`hand:${t.state.inPlay[0]!}`]!;
+    elsewhere.cards = [...elsewhere.cards, ...spare];
+    for (const id of spare) cards[id]!.zone = elsewhere.id;
+    t.state = { ...t.state, zones, cards };
+
+    expect(checkInvariants(t.state)).toEqual([]);
+    expect(laddis.redealClaim!(t.state, holder)).not.toBeNull();
+    expect(laddis.auction!(t.state)).toBeNull();
+    expect(t.submit(t.state.inPlay[0]!, { type: 'choose', option: 'offer:6:S' })).toMatchObject({
+      ok: false,
+    });
   });
 });
 

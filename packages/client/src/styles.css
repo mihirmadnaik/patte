@@ -1209,6 +1209,19 @@ html, body, #root {
 /* The rung the rules put out of reach, said where the stepper is. */
 .panel__hint--barred { color: #ffb4a2; }
 .auction__stake output { min-width: 2.4em; }
+/*
+ * A ladder with one rung on it.
+ *
+ * Rendered as the number itself rather than as a stepper, so it needs the
+ * weight the stepper's output got from sitting between two buttons --
+ * otherwise taking an offer of six shows a six that looks like a caption.
+ */
+.auction__only {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
 
 /* --- status readout ------------------------------------------------------ */
 

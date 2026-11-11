@@ -139,7 +139,27 @@ const STAKE_PREFIX = 'vakkhai:';
 /** Turning down the fresh deal four sevens entitles you to. */
 const PLAY_ON = 'play-on';
 
-type Stage = 'bidding' | 'calling' | 'playing';
+/**
+ * The offers there are: six of the eight tricks, or seven, or all eight.
+ *
+ * Six is the floor because the hand it replaces only asks four or five, and
+ * eight is the ceiling because eight is every trick there is.
+ */
+const OFFERS: readonly number[] = [6, 7, 8];
+/** Eight tricks, so an offer of six leaves the other side needing three. */
+const AGAINST_OFFER = TRICKS_STANDING + 1;
+/** An offer is sent as this plus the wager and the suit: `offer:6:S`. */
+const OFFER_PREFIX = 'offer:';
+/** Taking one is sent as this plus the wager, so a stale panel cannot. */
+const TAKE_OFFER_PREFIX = 'take-offer:';
+/** Making no offer at all, which is what most hands hear four times. */
+const NO_OFFER = 'no-offer';
+/** Giving up a tie rather than raising over it. */
+const STAND_DOWN = 'stand-down';
+/** Refusing the offer your partner has put to you. */
+const REFUSE_OFFER = 'refuse-offer';
+
+type Stage = 'bidding' | 'calling' | 'offering' | 'playing';
 
 // --- reading the table -----------------------------------------------------
 //
@@ -150,6 +170,7 @@ type Stage = 'bidding' | 'calling' | 'playing';
 function stage(state: GameState): Stage {
   const at = state.gameData['stage'];
   if (at === 'playing') return 'playing';
+  if (at === 'offering') return 'offering';
   if (at === 'calling') return 'calling';
   return 'bidding';
 }
@@ -380,6 +401,266 @@ function sevensClaimant(state: GameState): PlayerId | null {
       (id) => state.gameData[playsOnKey(id)] !== true && holdsEverySeven(state, id),
     ) ?? null
   );
+}
+
+// --- the offer -------------------------------------------------------------
+//
+// A trump nobody can see is the heart of this game, and it is also the one
+// thing a player holding a strong suit can do nothing about. The offer is the
+// way out: once the trump is down and the hand is dealt, a player may offer
+// their partner a contract -- six of the eight tricks or more, played in a
+// suit they name out loud -- and if the partner takes it, the named suit is
+// trump from the first card and the hidden one goes back into the hand it
+// came from, never seen.
+//
+// Everything about an offer is public, wager and suit both. That is the price
+// of it: naming your suit tells the opponents where your strength is, and a
+// refused offer tells them for nothing.
+//
+// Six and the three it leaves add up to nine against eight tricks, so exactly
+// one side gets there and the hand ends the moment it is decided -- the same
+// shape as the four and five it replaces.
+
+/** What this player offered: the wager, 0 for none, null while unasked. */
+function offerOf(state: GameState, playerId: PlayerId): number | null {
+  const value = state.gameData[`offer:${playerId}`];
+  return typeof value === 'number' ? value : null;
+}
+
+function offerSuitOf(state: GameState, playerId: PlayerId): Suit | null {
+  const named = textAt(state, `offerSuit:${playerId}`);
+  return named && HAND_SUITS.includes(named as Suit) ? (named as Suit) : null;
+}
+
+/** What they said in the run-off: the wager, 0 for standing down. */
+function runoffAnswerOf(state: GameState, playerId: PlayerId): number | null {
+  const value = state.gameData[`ro:${playerId}`];
+  return typeof value === 'number' ? value : null;
+}
+
+/**
+ * The figure this player is standing on.
+ *
+ * Their run-off answer where they gave one, because a raise is the wager now;
+ * otherwise the offer they opened with.
+ */
+function wagerOf(state: GameState, playerId: PlayerId): number {
+  return runoffAnswerOf(state, playerId) ?? offerOf(state, playerId) ?? 0;
+}
+
+/** The two tied players, while a run-off between them is open. */
+function offerRunoffPair(state: GameState): PlayerId[] | null {
+  const list = textAt(state, 'offerRunoff');
+  if (!list) return null;
+  const pair = list.split('|').filter((id) => state.inPlay.includes(id));
+  return pair.length === 2 ? pair : null;
+}
+
+/** The offer put to a partner and not yet answered. */
+function offerOnTable(state: GameState): { by: PlayerId; wager: number; suit: Suit } | null {
+  const by = textAt(state, 'offerBy');
+  if (!by || !state.inPlay.includes(by)) return null;
+  // Read off the offer as it was put, not off the offerer: a run-off raises
+  // the wager, and what the partner is answering is the figure on the table.
+  const named = textAt(state, 'offerTrump');
+  const suit = named && HAND_SUITS.includes(named as Suit) ? (named as Suit) : null;
+  const wager = numberAt(state, 'offerWager');
+  return suit && wager > 0 ? { by, wager, suit } : null;
+}
+
+/** The side that took a contract, once one has been taken. */
+function offerSideOf(state: GameState): PlayerId | null {
+  const by = textAt(state, 'offerSide');
+  return by && state.inPlay.includes(by) ? by : null;
+}
+
+/** How many of the eight the offering side owes. Zero when nobody offered. */
+function offerStakeOf(state: GameState): number {
+  return offerSideOf(state) ? numberAt(state, 'offerStake') : 0;
+}
+
+/** The next player who owes the circuit an answer, in seating order. */
+function nextOfferer(state: GameState): PlayerId | null {
+  return state.inPlay.find((id) => offerOf(state, id) === null) ?? null;
+}
+
+/** The best offer a side has made: the highest, and the earliest said. */
+function bestOfSide(state: GameState, side: readonly PlayerId[]): PlayerId | null {
+  // Walked in seating order, and only beaten by a strictly higher wager, so
+  // two partners at the same number leaves it with whoever spoke first.
+  let best: PlayerId | null = null;
+  for (const playerId of state.inPlay) {
+    if (!side.includes(playerId)) continue;
+    if ((offerOf(state, playerId) ?? 0) <= 0) continue;
+    if (best === null || wagerOf(state, playerId) > wagerOf(state, best)) best = playerId;
+  }
+  return best;
+}
+
+/** The offers made so far, in the words the panel shows the table. */
+function offersSoFar(state: GameState): string | null {
+  const said = state.inPlay
+    .filter((id) => (offerOf(state, id) ?? 0) > 0)
+    .map((id) => `${nameOf(state, id)} ${wagerOf(state, id)} in ${SUIT_LABEL[offerSuitOf(state, id) ?? 'S']}`);
+  return said.length > 0 ? said.join(' · ') : null;
+}
+
+function parseOffer(option: string): { wager: number; suit: Suit | null } | null {
+  if (!option.startsWith(OFFER_PREFIX)) return null;
+  const [figure, suit] = option.slice(OFFER_PREFIX.length).split(':');
+  const wager = Number(figure);
+  if (!OFFERS.includes(wager)) return null;
+  if (suit === undefined) return { wager, suit: null };
+  return HAND_SUITS.includes(suit as Suit) ? { wager, suit: suit as Suit } : null;
+}
+
+function parseTakeOffer(option: string): number | null {
+  if (!option.startsWith(TAKE_OFFER_PREFIX)) return null;
+  const wager = Number(option.slice(TAKE_OFFER_PREFIX.length));
+  return OFFERS.includes(wager) ? wager : null;
+}
+
+/**
+ * The question this stage is putting to somebody, if it is putting one.
+ *
+ * Three questions in one shape, because they are one question asked at
+ * different depths: will you offer, which of you gives way, and will you take
+ * it. The client renders all three from `AuctionCall` without knowing which.
+ */
+function offerCall(state: GameState): AuctionCall | null {
+  // Nothing is asked while the table is waiting to hear whether this hand is
+  // being played at all.
+  if (sevensClaimant(state) !== null) return null;
+
+  const table = offerOnTable(state);
+  if (table) {
+    const partner = partnersOf(state, table.by)[0];
+    if (!partner) return null;
+    const suit = SUIT_LABEL[table.suit];
+    return {
+      bidder: partner,
+      prompt: `${nameOf(state, table.by)} will take ${table.wager} of the eight tricks with ${suit} as trump. Take it and your side must make ${table.wager}, or ${table.wager * 2} goes on you.`,
+      standing: `${nameOf(state, table.by)} offers ${table.wager} in ${suit}`,
+      // One rung, because there is nothing to decide about the number: the
+      // only question is whether you are in.
+      stakes: [table.wager],
+      stakePrefix: TAKE_OFFER_PREFIX,
+      declareLabel: 'Take the offer',
+      stakeLabel: 'Tricks',
+      hold: { stake: table.wager, label: `Take the offer — ${table.wager} in ${suit}` },
+      passOption: REFUSE_OFFER,
+      passLabel: 'Refuse',
+      hint: 'Refuse, and the hand is played on the hidden trump.',
+    };
+  }
+
+  const pair = offerRunoffPair(state);
+  if (pair) {
+    const bidder = pair.find((id) => runoffAnswerOf(state, id) === null);
+    if (!bidder) return null;
+    const mine = wagerOf(state, bidder);
+    const others = pair.filter((id) => id !== bidder);
+    const names = nameList(state, others);
+    const capped = mine >= OFFERS[OFFERS.length - 1]!;
+    return {
+      bidder,
+      prompt: capped
+        ? `You and ${names} have both offered ${mine}, which is every trick there is. Keep it, or stand down — and if neither of you moves, it goes to the side that is not dealing.`
+        : `You and ${names} have both offered ${mine}. Say more, keep yours, or stand down — and if neither of you moves, it goes to the side that is not dealing.`,
+      standing: `${nameList(state, pair)} — both offering ${mine}`,
+      stakes: OFFERS.filter((wager) => wager >= mine),
+      stakePrefix: OFFER_PREFIX,
+      declareLabel: 'Raise to',
+      stakeLabel: 'Tricks',
+      hold: { stake: mine, label: `Keep your ${mine}` },
+      passOption: STAND_DOWN,
+      passLabel: 'Stand down',
+      // The suit is not asked for again: one offer, one suit.
+      hint: `Your trump stays ${SUIT_LABEL[offerSuitOf(state, bidder) ?? 'S']}.`,
+    };
+  }
+
+  const bidder = nextOfferer(state);
+  if (!bidder) return null;
+  const quota = sameSide(state, bidder, dealerOf(state) ?? bidder)
+    ? DEALER_QUOTA
+    : CHALLENGER_QUOTA;
+
+  return {
+    bidder,
+    prompt:
+      'Offer your partner six of the eight tricks or more, and name the trump you want to play it in. Everybody will see both.',
+    standing: offersSoFar(state),
+    stakes: [...OFFERS],
+    stakePrefix: OFFER_PREFIX,
+    declareLabel: 'Offer',
+    stakeLabel: 'Tricks',
+    suitChoice: { label: 'Trump', suits: [...HAND_SUITS] },
+    passOption: NO_OFFER,
+    passLabel: 'No offer',
+    hint: `No offer, and your side must take ${quota} of the tricks on the hidden trump.`,
+  };
+}
+
+/**
+ * The circuit is over: whose offer, if anybody's, is put to their partner.
+ *
+ * One offer per side reaches the question -- the higher of two partners', and
+ * the earlier said when they are level, because partners cannot sensibly bid
+ * each other up. Between the sides the higher wager simply takes it; level is
+ * a question put back to the two who made it.
+ */
+function settleOffers(state: GameState): EventBody[] {
+  const sides = state.teams.map((side) => bestOfSide(state, side)).filter((id): id is PlayerId => id !== null);
+  if (sides.length === 0) return openHandPlay(state);
+  if (sides.length === 1) return putOffer(state, sides[0]!, null);
+
+  const [first, second] = sides as [PlayerId, PlayerId];
+  const high = wagerOf(state, first);
+  const low = wagerOf(state, second);
+  if (high > low) return putOffer(state, first, second);
+  if (low > high) return putOffer(state, second, first);
+
+  // Level across the table. Asked in seating order, so the pair is kept that
+  // way rather than in the order the sides happen to sit in `teams`.
+  const pair = state.inPlay.filter((id) => id === first || id === second);
+  return [{ type: 'gameDataSet', key: 'offerRunoff', value: pair.join('|') }];
+}
+
+/**
+ * The run-off, read once.
+ *
+ * Both answers are in: the higher takes it, one standing down hands it over,
+ * and two players who will not move are separated by the one standing rule
+ * there is -- the side not dealing is the side under pressure, so the hand is
+ * theirs.
+ */
+function settleOfferRunoff(state: GameState, pair: readonly PlayerId[]): EventBody[] {
+  const [first, second] = pair as [PlayerId, PlayerId];
+  const mine = runoffAnswerOf(state, first) ?? 0;
+  const theirs = runoffAnswerOf(state, second) ?? 0;
+
+  if (mine === 0 && theirs === 0) return openHandPlay(state);
+  // Whoever stood down is not kept as a fallback: they gave it up.
+  if (theirs === 0) return putOffer(state, first, null);
+  if (mine === 0) return putOffer(state, second, null);
+  if (mine > theirs) return putOffer(state, first, second);
+  if (theirs > mine) return putOffer(state, second, first);
+
+  const dealers = dealingSide(state);
+  const held = dealers.includes(first) ? second : first;
+  const other = held === first ? second : first;
+  return putOffer(state, held, other);
+}
+
+/** Put an offer to its partner, with the other side's underneath it. */
+function putOffer(state: GameState, by: PlayerId, fallback: PlayerId | null): EventBody[] {
+  return [
+    { type: 'gameDataSet', key: 'offerWager', value: wagerOf(state, by) },
+    { type: 'gameDataSet', key: 'offerTrump', value: offerSuitOf(state, by) ?? '' },
+    { type: 'gameDataSet', key: 'offerFallback', value: fallback ?? '' },
+    { type: 'gameDataSet', key: 'offerBy', value: by },
+  ];
 }
 
 // --- the auction -----------------------------------------------------------
@@ -673,8 +954,9 @@ function legalCards(state: GameState, playerId: PlayerId): CardId[] {
   // Nothing is set aside and nothing is played while the table is waiting on
   // somebody entitled to throw the hand in.
   if (sevensClaimant(state) !== null) return [];
-  // Nothing is played during the bidding.
-  if (at === 'bidding') return [];
+  // Nothing is played during the bidding, nor while the table is deciding
+  // whether this hand is being played on somebody's named trump.
+  if (at === 'bidding' || at === 'offering') return [];
   // Any of your four may be the one you set aside.
   if (at === 'calling') return playerId === callerOf(state) ? handCards(state, playerId) : [];
 
@@ -761,7 +1043,8 @@ function outZone(): Zone {
 export const laddis: Ruleset = {
   id: 'laddis',
   name: 'लॅडीस',
-  blurb: 'Four players, two sides. Take your quota of the eight tricks — or declare वख्खै and play alone.',
+  blurb:
+    'Four players, two sides. Take your quota of the eight tricks — declare वख्खै and play alone, or offer your partner six of them in a trump you name.',
   handOrder: { suits: HAND_SUITS, ranks: [...RANKING] },
   minPlayers: SEATS,
   maxPlayers: SEATS,
@@ -784,6 +1067,10 @@ export const laddis: Ruleset = {
       'The non-dealers getting there posts 5 onto the dealers. The dealers getting there posts 10 onto the non-dealers, settling against whatever they were carrying first.',
       'Whoever is carrying points deals. Land on nothing and the same side deals again; within a side the deal crosses to the partner every thirty-two points.',
       'वख्खै is a hand taken on alone: your partner\'s cards are withdrawn, three of you play four tricks with no trump, and you must win every one. Name your stake — 8, 16 or 32 — and win and it goes on them, lose and double goes on you.',
+      'Once the trump is down and the hand is dealt, any player may offer their partner 6, 7 or 8 of the tricks — and name the trump they want to play it in. Both are said out loud, so the table learns where your strength is whether the offer is taken or not.',
+      'If the partner takes it, the named suit is trump in the open from the first card and the hidden one goes back into the hand it came from, unseen. The offering side must make its number; the other side needs what is left over plus one.',
+      'An offer made good posts the wager onto the other side. Missed, it posts double onto the side that offered. Refused, the hand is played on the hidden trump for the ordinary four and five.',
+      'Two sides offering the same number settle it between them: raise, keep it, or stand down — and if neither moves it goes to the side that is not dealing.',
     ],
   },
   // No passing: you always hold something you are allowed to play.
@@ -799,6 +1086,15 @@ export const laddis: Ruleset = {
     if (event.type === 'gameDataSet' && event.key === 'trump') {
       const trump = revealedTrump(state);
       if (!trump) return null;
+
+      // Nothing was turned up here: a trump was named out loud and agreed to,
+      // and there is no card to hold up because the hidden one has gone back
+      // into a hand unseen.
+      const offering = offerSideOf(state);
+      if (offering) {
+        const partner = partnersOf(state, offering)[0] ?? null;
+        return `${nameOf(state, partner)} takes ${nameOf(state, offering)}'s offer — ${offerStakeOf(state)} in ${SUIT_LABEL[trump]}`;
+      }
       // Said to the player who asked for it as well. Everybody else has been
       // playing blind and this is the fact the rest of the hand turns on --
       // and the asker has not seen the card either.
@@ -815,7 +1111,13 @@ export const laddis: Ruleset = {
   },
 
   auction(state: GameState): AuctionCall | null {
-    if (state.phase !== 'playing' || stage(state) !== 'bidding') return null;
+    if (state.phase !== 'playing') return null;
+    // Two auctions, one shape. The offer's is kept to itself rather than
+    // folded in here: it asks a different question of a different player at
+    // three different depths, and the two have no stake, ladder or tie rule
+    // in common.
+    if (stage(state) === 'offering') return offerCall(state);
+    if (stage(state) !== 'bidding') return null;
     const bidder = nextBidder(state);
     if (!bidder) return null;
 
@@ -923,6 +1225,16 @@ export const laddis: Ruleset = {
         : `${nameOf(state, sevens)} is deciding whether to play this hand`;
     }
 
+    if (stage(state) === 'offering') {
+      const call = offerCall(state);
+      if (!call) return null;
+      const table = offerOnTable(state);
+      if (call.bidder === playerId) return null; // the panel is already asking them
+      return table
+        ? `${nameOf(state, call.bidder)} is deciding whether to take the offer`
+        : `${nameOf(state, call.bidder)} is deciding whether to offer`;
+    }
+
     if (stage(state) === 'calling') {
       const caller = callerOf(state);
       if (!caller) return null;
@@ -978,19 +1290,41 @@ export const laddis: Ruleset = {
     const dealers = dealingSide(state).filter((id) => playing.has(id));
     const others = (dealer ? otherSide(state, dealer) : []).filter((id) => playing.has(id));
 
+    /*
+     * A taken offer replaces both quotas at once.
+     *
+     * The side that took it owes its wager and the other side owes what is
+     * left over plus one, which is the same arithmetic as four and five: nine
+     * between them against eight tricks, so one of them always gets there.
+     */
+    const stake = offerStakeOf(state);
+    const offering = offerSideOf(state);
+    const quotaOf = (side: readonly PlayerId[], ordinary: number): number => {
+      if (stake === 0 || !offering) return ordinary;
+      return side.includes(offering) ? stake : AGAINST_OFFER - stake;
+    };
+    const noteOn = (side: readonly PlayerId[], ordinary?: string): string | undefined => {
+      if (stake === 0 || !offering || !side.includes(offering)) return ordinary;
+      return ordinary ? `${ordinary} · offers` : 'offers';
+    };
+
+    const dealNote = noteOn(dealers, 'deals');
+    const otherNote = noteOn(others);
+
     return [
       {
         playerId: dealer ?? dealers[0] ?? '',
         team: dealers,
         won: tricksFor(state, dealers),
-        quota: DEALER_QUOTA,
-        note: 'deals',
+        quota: quotaOf(dealers, DEALER_QUOTA),
+        ...(dealNote ? { note: dealNote } : {}),
       },
       {
         playerId: others[0] ?? '',
         team: others,
         won: tricksFor(state, others),
-        quota: CHALLENGER_QUOTA,
+        quota: quotaOf(others, CHALLENGER_QUOTA),
+        ...(otherNote ? { note: otherNote } : {}),
       },
     ];
   },
@@ -1017,6 +1351,7 @@ export const laddis: Ruleset = {
     // Setting the trump aside is a card being played, not a question: the hand
     // has to stay lit and tappable, so the table is not told to stand down.
     if (stage(state) === 'bidding') return nextBidder(state);
+    if (stage(state) === 'offering') return offerCall(state)?.bidder ?? null;
     return awaitingCollection(state, trickSize(state));
   },
 
@@ -1148,6 +1483,42 @@ export const laddis: Ruleset = {
       return administering() ? ALLOW : { ok: false, reason: 'the bidding is still going round' };
     }
 
+    if (at === 'offering') {
+      if (intent.type === 'choose') {
+        if (held) return holding();
+        // Judged against the question actually being put: the same call the
+        // panel is drawn from, so the two can never disagree about who is
+        // being asked or what they may say.
+        const call = offerCall(state);
+        if (!call) return { ok: false, reason: 'there is nothing to answer' };
+        if (actor !== call.bidder) return { ok: false, reason: 'it is not your call' };
+        if (intent.option === call.passOption) return ALLOW;
+
+        const taken = parseTakeOffer(intent.option);
+        if (taken !== null) {
+          return call.stakePrefix === TAKE_OFFER_PREFIX && call.stakes.includes(taken)
+            ? ALLOW
+            : { ok: false, reason: 'there is no offer to take' };
+        }
+
+        const made = parseOffer(intent.option);
+        if (!made) return { ok: false, reason: `an offer is ${OFFERS.join(', ')} of the tricks` };
+        if (call.stakePrefix !== OFFER_PREFIX || !call.stakes.includes(made.wager)) {
+          return { ok: false, reason: `an offer is ${call.stakes.join(', ')} of the tricks` };
+        }
+        // A suit on the first offer and never again: the run-off raises the
+        // number, and the trump was settled when the offer was made.
+        if (call.suitChoice && made.suit === null) {
+          return { ok: false, reason: 'name the trump you want to play it in' };
+        }
+        if (!call.suitChoice && made.suit !== null) {
+          return { ok: false, reason: 'your trump is already named' };
+        }
+        return ALLOW;
+      }
+      return administering() ? ALLOW : { ok: false, reason: 'the offer is still going round' };
+    }
+
     if (at === 'calling') {
       if (intent.type === 'move') {
         // Rearranging your own hand is fine at any point.
@@ -1254,6 +1625,49 @@ export const laddis: Ruleset = {
 
       const runoff = runoffOf(state);
       return runoff ? settleRunoff(state, runoff) : settleAmong(state, state.inPlay);
+    }
+
+    // --- the offer --------------------------------------------------------
+    //
+    // The same two-step as the bidding, for the same reason: an answer is
+    // written down, and it is the writing-down that settles. So there is one
+    // path to the settle whether the answer came from a player or from the
+    // last of three keys landing in a batch.
+    if (at === 'offering') {
+      if (event.type === 'chosen') {
+        if (event.option === REFUSE_OFFER) return refuseOffer(state);
+        if (parseTakeOffer(event.option) !== null) return acceptOffer(state);
+
+        const inRunoff = offerRunoffPair(state) !== null;
+        if (event.option === NO_OFFER) {
+          return [{ type: 'gameDataSet', key: `offer:${event.by}`, value: 0 }];
+        }
+        if (event.option === STAND_DOWN) {
+          return [{ type: 'gameDataSet', key: `ro:${event.by}`, value: 0 }];
+        }
+
+        const made = parseOffer(event.option);
+        if (!made) return [];
+        if (inRunoff) return [{ type: 'gameDataSet', key: `ro:${event.by}`, value: made.wager }];
+        return [
+          { type: 'gameDataSet', key: `offerSuit:${event.by}`, value: made.suit ?? '' },
+          { type: 'gameDataSet', key: `offer:${event.by}`, value: made.wager },
+        ];
+      }
+
+      // Only the answers move things on. `offerSuit:`, `offerBy` and the rest
+      // describe the question rather than answer it, and reacting to those
+      // would settle the same circuit over and over.
+      if (event.type !== 'gameDataSet') return [];
+      if (!event.key.startsWith('offer:') && !event.key.startsWith('ro:')) return [];
+
+      const pair = offerRunoffPair(state);
+      if (pair) {
+        return pair.every((id) => runoffAnswerOf(state, id) !== null)
+          ? settleOfferRunoff(state, pair)
+          : [];
+      }
+      return nextOfferer(state) === null ? settleOffers(state) : [];
     }
 
     // --- the trump, set aside ---------------------------------------------
@@ -1458,10 +1872,77 @@ function openPlay(state: GameState): EventBody[] {
 
   return [
     { type: 'cardsRevealed', cardIds: [hidden], to: [caller] },
-    { type: 'gameDataSet', key: 'stage', value: 'playing' },
+    // Dealt into the offer stage rather than into play: the hand is all
+    // there, and the question of whether to play it on this trump comes
+    // before the first card. An ordinary hand passes straight through.
+    { type: 'gameDataSet', key: 'stage', value: 'offering' },
     { type: 'cardsMoved', placements },
     { type: 'turnSet', playerId: caller },
   ];
+}
+
+/**
+ * The offer stage is over and nothing came of it: the hand as it has always
+ * been played, on a trump nobody can see, for quotas of four and five.
+ */
+function openHandPlay(state: GameState): EventBody[] {
+  return [
+    { type: 'gameDataSet', key: 'stage', value: 'playing' },
+    { type: 'turnSet', playerId: callerOf(state) },
+  ];
+}
+
+/**
+ * An offer, taken.
+ *
+ * The named suit becomes trump in the open, for every trick, and the card
+ * that was set aside goes back into the hand it came from -- an ordinary card
+ * from this moment, which nobody but its owner ever sees. With it gone there
+ * is nothing left face down to ask about, so `mayAsk` and the caller's
+ * automatic reveal both switch themselves off without being told to.
+ *
+ * `offerSide` is written before the trump, because the announcement fires on
+ * the trump landing and has to be able to tell this from a card being turned
+ * up mid-hand.
+ *
+ * The proposer leads. They named the suit and the number, and leading is part
+ * of what they took on.
+ */
+function acceptOffer(state: GameState): EventBody[] {
+  const table = offerOnTable(state);
+  if (!table) return [];
+
+  const hidden = hiddenTrumpCard(state);
+  const caller = callerOf(state);
+  const home = caller ? `hand:${caller}` : null;
+  const at = home ? (state.zones[home]?.cards.length ?? 0) : 0;
+
+  return [
+    { type: 'gameDataSet', key: 'offerSide', value: table.by },
+    { type: 'gameDataSet', key: 'offerStake', value: table.wager },
+    { type: 'gameDataSet', key: 'trump', value: table.suit },
+    // Answered, so the question stops being asked.
+    { type: 'gameDataSet', key: 'offerBy', value: '' },
+    ...(hidden && home
+      ? [{ type: 'cardsMoved' as const, placements: [{ cardId: hidden, toZone: home, toIndex: at }] }]
+      : []),
+    { type: 'gameDataSet', key: 'stage', value: 'playing' },
+    { type: 'turnSet', playerId: table.by },
+  ];
+}
+
+/**
+ * An offer, refused.
+ *
+ * The other side's offer stands in its place and is put to their partner --
+ * winning the run-off is winning the right to be asked, not the right to
+ * stop anybody else being asked. With nothing underneath it, the hand is
+ * played on the hidden trump.
+ */
+function refuseOffer(state: GameState): EventBody[] {
+  const fallback = textAt(state, 'offerFallback');
+  if (fallback && state.inPlay.includes(fallback)) return putOffer(state, fallback, null);
+  return [{ type: 'gameDataSet', key: 'offerBy', value: '' }, ...openHandPlay(state)];
 }
 
 /**
@@ -1529,6 +2010,29 @@ function handResult(state: GameState): EventBody[] {
     } else if (mine >= TRICKS_ALONE) {
       winners = sideOf(state, declarer);
       points = stake;
+    }
+  } else if (offerSideOf(state)) {
+    /*
+     * A contract, and the hand is judged on it alone -- the four-and-five
+     * quotas are not in this hand at all. The side that took the offer owes
+     * its wager; the other side owes what is left over plus one, so one of
+     * them always gets there and the hand ends when they do.
+     *
+     * Winning posts the wager. Missing it posts double onto the side that
+     * offered, which the ordinary machinery below does by itself: they are
+     * the losers, and the losers are who a posting lands on.
+     */
+    const offering = offerSideOf(state)!;
+    const stake = offerStakeOf(state);
+    const theirs = sideOf(state, offering).filter((id) => state.inPlay.includes(id));
+    const opponents = state.inPlay.filter((id) => !theirs.includes(id));
+
+    if (tricksFor(state, theirs) >= stake) {
+      winners = theirs;
+      points = stake;
+    } else if (tricksFor(state, opponents) >= AGAINST_OFFER - stake) {
+      winners = opponents;
+      points = stake * 2;
     }
   } else {
     const dealers = dealingSide(state);

@@ -126,6 +126,17 @@ export interface AuctionCall {
   /** The word on the pass button. */
   passLabel?: string;
   /**
+   * A suit the declaration has to name as well as a number.
+   *
+   * लॅडीस's offer is one act with two halves -- six of the tricks, and the
+   * suit you want to take them in -- and splitting it over two questions
+   * would let a player commit to a number before knowing what they were
+   * being asked to play it in. Where it is present the panel shows the suits
+   * and sends `<stakePrefix><stake>:<suit>`; where it is absent the number
+   * goes on its own.
+   */
+  suitChoice?: { label: string; suits: Suit[] };
+  /**
    * A closing line under the panel, in the game's words.
    *
    * What saying nothing leaves you with, which is a different fact in every

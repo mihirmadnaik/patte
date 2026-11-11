@@ -574,20 +574,51 @@ function Auction({
             {stake !== undefined && (
               <label className="rounds auction__stake">
                 {call.stakeLabel ?? 'Stake'}
-                <span className="rounds__stepper">
-                  <button onClick={() => step(-1)} aria-label="a smaller stake">
-                    −
-                  </button>
-                  <output>{stake}</output>
-                  <button onClick={() => step(1)} aria-label="a larger stake">
-                    +
-                  </button>
-                </span>
+                {/* One rung is not a choice, so it is not a stepper: a pair
+                    of dead buttons either side of a number reads as a
+                    decision the player is failing to make. */}
+                {stakes.length === 1 ? (
+                  <output className="auction__only">{stake}</output>
+                ) : (
+                  <span className="rounds__stepper">
+                    <button onClick={() => step(-1)} aria-label="a smaller stake">
+                      −
+                    </button>
+                    <output>{stake}</output>
+                    <button onClick={() => step(1)} aria-label="a larger stake">
+                      +
+                    </button>
+                  </span>
+                )}
               </label>
             )}
 
+            {/* A declaration that has to name a suit as well as a number.
+                The suits are the declaration -- tapping one sends both -- so
+                there is no separate button to press afterwards and no
+                half-made choice for this panel to hold on to. */}
+            {stake !== undefined && call.suitChoice && (
+              <div className="suits">
+                {call.suitChoice.suits.map((suit) => (
+                  <button
+                    key={suit}
+                    className={`suits__pick${suit === 'H' || suit === 'D' ? ' is-red' : ''}`}
+                    disabled={blocked}
+                    onClick={() => {
+                      if (blocked) return;
+                      net.submit({ type: 'choose', option: `${call.stakePrefix}${stake}:${suit}` });
+                      sounds.slide();
+                    }}
+                  >
+                    <span className="suits__glyph">{SUIT_GLYPHS[suit]}</span>
+                    {`${call.declareLabel} ${stake} · ${SUIT_NAMES[suit]}`}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="panel__actions">
-              {stake !== undefined && (
+              {stake !== undefined && !call.suitChoice && (
                 <button
                   className="primary"
                   disabled={blocked}

@@ -136,6 +136,8 @@ const ASK = 'ask';
 const PASS_BID = 'pass';
 /** A declaration is sent as this plus the stake: `vakkhai:16`. */
 const STAKE_PREFIX = 'vakkhai:';
+/** Turning down the fresh deal four sevens entitles you to. */
+const PLAY_ON = 'play-on';
 
 type Stage = 'bidding' | 'calling' | 'playing';
 
@@ -322,6 +324,45 @@ function mayAsk(state: GameState, playerId: PlayerId): boolean {
   const led = suitLed(state, trickSize(state));
   if (!led) return false;
   return !handCards(state, playerId).some((id) => state.cards[id]?.face?.suit === led);
+}
+
+// --- a hand nobody should have to play --------------------------------------
+
+/** Set once this player has said they will play a four-seven hand after all. */
+function playsOnKey(playerId: PlayerId): string {
+  return `playson:${playerId}`;
+}
+
+function holdsEverySeven(state: GameState, playerId: PlayerId): boolean {
+  const sevens = handCards(state, playerId).filter(
+    (id) => state.cards[id]?.face?.rank === '7',
+  ).length;
+  return sevens >= SUITS_IN_PACK;
+}
+
+/**
+ * Whoever the table is waiting on to say whether this hand is played at all.
+ *
+ * The entitlement used to lapse the moment anybody put a card down, and the
+ * card that ended it was almost never theirs: the hand is dealt out, the
+ * offer appears, and the caller leads a second later from the other side of
+ * the table. So the offer is the hand's own business now -- nothing is set
+ * aside and nothing is played until it has been answered -- and the answer is
+ * sent, rather than remembered in one browser, so that the rest of the table
+ * can tell the difference between a player thinking and a player who has
+ * decided to play on.
+ *
+ * The played-a-card test stays as the backstop it always was: if a card is
+ * somehow down, the moment has passed whatever anybody has said.
+ */
+function sevensClaimant(state: GameState): PlayerId | null {
+  if (state.phase !== 'playing') return null;
+  if (tricksPlayed(state) > 0 || trickCards(state).length > 0) return null;
+  return (
+    state.inPlay.find(
+      (id) => state.gameData[playsOnKey(id)] !== true && holdsEverySeven(state, id),
+    ) ?? null
+  );
 }
 
 // --- the auction -----------------------------------------------------------
@@ -612,6 +653,9 @@ function legalCards(state: GameState, playerId: PlayerId): CardId[] {
   if (state.phase !== 'playing') return [];
 
   const at = stage(state);
+  // Nothing is set aside and nothing is played while the table is waiting on
+  // somebody entitled to throw the hand in.
+  if (sevensClaimant(state) !== null) return [];
   // Nothing is played during the bidding.
   if (at === 'bidding') return [];
   // Any of your four may be the one you set aside.
@@ -834,24 +878,33 @@ export const laddis: Ruleset = {
    * can become true at either half of the deal, so it is asked rather than
    * announced once.
    */
-  redealClaim(state: GameState, playerId: PlayerId): { prompt: string; said: string } | null {
-    if (state.phase !== 'playing') return null;
-    // Once a card is down the hand has started and the moment has passed.
-    if (tricksPlayed(state) > 0 || trickCards(state).length > 0) return null;
-
-    const hand = handCards(state, playerId);
-    const sevens = hand.filter((id) => state.cards[id]?.face?.rank === '7').length;
-    if (sevens < SUITS_IN_PACK) return null;
+  redealClaim(
+    state: GameState,
+    playerId: PlayerId,
+  ): { prompt: string; said: string; declineOption: string } | null {
+    if (sevensClaimant(state) !== playerId) return null;
 
     const name = state.players[playerId]?.name ?? 'A player';
     return {
       prompt: 'You have four 7s, would you like to redeal?',
       said: `${name} had all four 7s — dealing again`,
+      declineOption: PLAY_ON,
     };
   },
 
   instruction(state: GameState, playerId: PlayerId): string | null {
     if (state.phase !== 'playing') return null;
+
+    // Said to everybody, because the hand is stopped and the stop needs a
+    // reason. What is not said is which cards: the claim panel tells the one
+    // player who already knows, and the table finds out only if the hand
+    // actually goes back.
+    const sevens = sevensClaimant(state);
+    if (sevens) {
+      return sevens === playerId
+        ? 'Four 7s — throw this hand in, or play it'
+        : `${nameOf(state, sevens)} is deciding whether to play this hand`;
+    }
 
     if (stage(state) === 'calling') {
       const caller = callerOf(state);
@@ -941,6 +994,9 @@ export const laddis: Ruleset = {
 
   awaitingChoice(state: GameState): PlayerId | null {
     if (state.phase !== 'playing') return null;
+    // Nothing is anybody's to do while a four-seven hand is being decided.
+    const sevens = sevensClaimant(state);
+    if (sevens) return sevens;
     // Setting the trump aside is a card being played, not a question: the hand
     // has to stay lit and tappable, so the table is not told to stand down.
     if (stage(state) === 'bidding') return nextBidder(state);
@@ -1040,6 +1096,22 @@ export const laddis: Ruleset = {
         : { ok: false, reason: 'the game is not in play' };
     }
 
+    // Turning down a fresh deal, which is the one thing that can be said
+    // while the hand is held up -- and it is what unholds it.
+    if (intent.type === 'choose' && intent.option === PLAY_ON) {
+      return sevensClaimant(state) === actor
+        ? ALLOW
+        : { ok: false, reason: 'you have no hand to throw in' };
+    }
+
+    const held = sevensClaimant(state);
+    const holding = (): Verdict => ({
+      ok: false,
+      reason: held
+        ? `${nameOf(state, held)} may still throw this hand in`
+        : 'the hand is on hold',
+    });
+
     const at = stage(state);
 
     if (at === 'bidding') {
@@ -1067,6 +1139,7 @@ export const laddis: Ruleset = {
             ? ALLOW
             : { ok: false, reason: 'a card that is played stays played' };
         }
+        if (held) return holding();
         if (actor !== callerOf(state)) return { ok: false, reason: 'the trump is not yours to set' };
         if (intent.toZone !== TRUMP_ZONE) return { ok: false, reason: 'set a card aside as trump' };
         if (intent.cardIds.length !== 1) return { ok: false, reason: 'one card is the trump' };
@@ -1109,6 +1182,7 @@ export const laddis: Ruleset = {
             : { ok: false, reason: 'a card that is played stays played' };
         }
 
+        if (held) return holding();
         if (state.turn !== actor) return { ok: false, reason: 'wait for your turn' };
         if (intent.toZone !== TRICK_ZONE) return { ok: false, reason: 'play cards to the middle' };
         if (intent.cardIds.length !== 1) return { ok: false, reason: 'play one card at a time' };
@@ -1134,6 +1208,13 @@ export const laddis: Ruleset = {
 
   after(state: GameState, event: GameEvent): EventBody[] {
     if (state.phase !== 'playing') return [];
+
+    // Written down before anything else is read, so the bidding below cannot
+    // mistake a refused redeal for a bid of nothing.
+    if (event.type === 'chosen' && event.option === PLAY_ON) {
+      return [{ type: 'gameDataSet', key: playsOnKey(event.by), value: true }];
+    }
+
     const at = stage(state);
 
     // --- the auction ------------------------------------------------------

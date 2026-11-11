@@ -1226,11 +1226,60 @@ describe('four sevens', () => {
     expect(t.submit('ben', { type: 'claimRedeal' })).toMatchObject({ ok: false });
   });
 
-  it('is off the table once a card has been played', () => {
+  it('holds the trump and the lead up until it is answered', () => {
+    // The offer used to lapse the moment anybody played, and the card that
+    // ended it was almost never the holder's: the second half goes out, the
+    // offer appears, and the caller leads from across the table a second
+    // later. So nothing moves until the holder has said.
     const t = dealtFourSevens('ana');
-    // Pass the bidding out, set a trump, and lead -- by which point the hand
-    // is under way and the offer has gone.
     passRound(t);
+    const caller = t.state.inPlay[0]!;
+
+    // Not even the trump, which is what deals the rest of the hand.
+    const set = t.submit(caller, { type: 'move', cardIds: [hand(t.state, caller)[0]!], toZone: 'trump' });
+    expect(set).toMatchObject({ ok: false, reason: 'ana may still throw this hand in' });
+    expect(legal(t.state, caller)).toEqual([]);
+
+    // Everybody is told what the table is waiting for, and only the holder
+    // is told what they are holding.
+    expect(laddis.awaitingChoice!(t.state)).toBe('ana');
+    expect(laddis.instruction!(t.state, 'ben')).toContain('deciding whether to play');
+    expect(laddis.instruction!(t.state, 'ben')).not.toContain('7');
+
+    // And the offer is still standing, which is the whole point.
+    expect(laddis.redealClaim!(t.state, 'ana')).not.toBeNull();
+  });
+
+  it('plays on when the offer is turned down, and does not ask again', () => {
+    const t = dealtFourSevens('ana');
+    passRound(t);
+    say(t, 'ana', 'play-on');
+
+    expect(laddis.redealClaim!(t.state, 'ana')).toBeNull();
+    expect(t.submit('ana', { type: 'claimRedeal' })).toMatchObject({ ok: false });
+
+    // The hand goes ahead from where it was held: the trump, then the lead.
+    const caller = t.state.inPlay[0]!;
+    expect(t.submit(caller, { type: 'move', cardIds: [hand(t.state, caller)[0]!], toZone: 'trump' }).ok).toBe(true);
+    expect(stage(t.state)).toBe('playing');
+    const leader = t.state.turn!;
+    expect(t.submit(leader, { type: 'move', cardIds: [legal(t.state, leader)[0]!], toZone: TRICK_ZONE }).ok).toBe(true);
+    expect(checkInvariants(t.state)).toEqual([]);
+  });
+
+  it('refuses a refusal from somebody with nothing to refuse', () => {
+    const t = dealtFourSevens('ana');
+    expect(t.submit('ben', { type: 'choose', option: 'play-on' })).toMatchObject({ ok: false });
+    // And it is not read as a bid of nothing.
+    expect(t.state.gameData['bid:ben']).toBeUndefined();
+  });
+
+  it('is off the table once a card is somehow down', () => {
+    // The backstop: whatever anybody has or has not said, a hand that has
+    // started is not going back.
+    const t = dealtFourSevens('ana');
+    passRound(t);
+    say(t, 'ana', 'play-on');
     const caller = t.state.inPlay[0]!;
     t.submit(caller, { type: 'move', cardIds: [hand(t.state, caller)[0]!], toZone: 'trump' });
     const leader = t.state.turn!;

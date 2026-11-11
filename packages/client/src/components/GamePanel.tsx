@@ -88,7 +88,17 @@ export function GamePanel({
             >
               Deal again
             </button>
-            <button onClick={() => setWaved(claim.prompt)}>Play it</button>
+            <button
+              onClick={() => {
+                // A game that wants the table to wait gives the refusal an
+                // option to send, because the wait cannot end on something
+                // only this browser knows. Without one it stays local.
+                if (claim.declineOption) net.submit({ type: 'choose', option: claim.declineOption });
+                else setWaved(claim.prompt);
+              }}
+            >
+              Play it
+            </button>
           </div>
         </div>
       </div>

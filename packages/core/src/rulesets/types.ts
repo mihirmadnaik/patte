@@ -354,8 +354,16 @@ export interface Ruleset {
    * table for a redeal, this needs nobody's agreement: the entitlement is a
    * fact about the cards rather than a favour, and the ruleset is the only
    * thing that can see it. Null for everybody else, which is almost always.
+   *
+   * `declineOption` is what to send when the offer is turned down. With it,
+   * saying no is a move the table sees, which is what lets the game hold play
+   * up until the answer comes -- without it the refusal lives in one browser
+   * and the rest of the table has no way to know it is allowed to carry on.
    */
-  redealClaim?(state: GameState, playerId: PlayerId): { prompt: string; said: string } | null;
+  redealClaim?(
+    state: GameState,
+    playerId: PlayerId,
+  ): { prompt: string; said: string; declineOption?: string } | null;
 
   /** The rules, for the help panel. */
   howToPlay?: HowToPlay;

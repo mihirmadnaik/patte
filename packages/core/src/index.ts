@@ -7,6 +7,7 @@ export * from './resolve.js';
 export * from './project.js';
 export * from './protocol.js';
 export * from './predict.js';
+export * from './premove.js';
 export * from './table.js';
 export * from './rulesets/types.js';
 export * from './rulesets/tricks.js';

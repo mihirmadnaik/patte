@@ -36,6 +36,8 @@ export function HandDrawer({
   playable,
   refereed,
   selected,
+  queued,
+  arming,
   confirmSize,
   canPlay,
   onPlay,
@@ -53,6 +55,10 @@ export function HandDrawer({
   refereed: boolean;
   /** The card chosen so far, which is where the play button goes. */
   selected: string | null;
+  /** A card already armed to play itself when the turn comes. */
+  queued: string | null;
+  /** Whether a tap here arms the card for later rather than playing it now. */
+  arming: boolean;
   confirmSize: number;
   /** Whether this card has exactly one destination, so one tap can send it. */
   canPlay(cardId: string): boolean;
@@ -138,6 +144,7 @@ export function HandDrawer({
                   blocked={refereed && !playable.has(cardId)}
                   heldByOther={false}
                   selected={selected === cardId}
+                  queued={queued === cardId}
                   dragging={false}
                   interactive
                   // Nothing is decided on the press, and nothing is prevented:
@@ -155,10 +162,10 @@ export function HandDrawer({
                 />
                 {selected === cardId && canPlay(cardId) && (
                   <button
-                    className="playcheck playcheck--inline"
+                    className={`playcheck playcheck--inline${arming ? ' playcheck--arm' : ''}`}
                     style={{ width: confirmSize, height: confirmSize }}
-                    aria-label="play this card"
-                    title="Play this card"
+                    aria-label={arming ? 'play this card when your turn comes' : 'play this card'}
+                    title={arming ? 'Play this when your turn comes' : 'Play this card'}
                     onClick={() => onPlay(cardId)}
                   >
                     <span className="playcheck__tick" />
@@ -171,7 +178,9 @@ export function HandDrawer({
 
         <p className="drawer__hint">
           {selected && canPlay(selected)
-            ? 'tap the check to play it'
+            ? arming
+              ? 'tap the check to play it when your turn comes'
+              : 'tap the check to play it'
             : `${hand.length} cards — tap one, or swipe down to close`}
         </p>
       </div>

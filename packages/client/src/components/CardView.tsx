@@ -21,6 +21,8 @@ export interface CardViewProps {
   playable: boolean;
   /** In hand on your turn, but not legal to play. */
   blocked: boolean;
+  /** Chosen before the turn arrived, and waiting to play itself. */
+  queued?: boolean;
   /** The card most recently put down, so the table can see what was played. */
   lastPlay: boolean;
   /**
@@ -73,6 +75,7 @@ export function CardView(props: CardViewProps): React.JSX.Element {
   if (props.playable) classes.push('is-playable');
   if (props.blocked) classes.push('is-blocked');
   if (props.selected) classes.push('is-selected');
+  if (props.queued) classes.push('is-queued');
   if (props.dragging) classes.push('is-dragging');
   if (props.heldByOther) classes.push('is-held');
   if (peeking) classes.push('is-peeking');

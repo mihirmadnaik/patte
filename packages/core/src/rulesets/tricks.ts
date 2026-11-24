@@ -172,6 +172,30 @@ export function awaitingCollection(state: GameState, trickSize: number): PlayerI
   return state.turn;
 }
 
+/**
+ * Whether the lead has already settled what this player may play.
+ *
+ * The shared half of `premoveReady`: true for somebody who is not on turn,
+ * in a trick that has been led and is not yet finished, and who has not
+ * already played to it. Each game adds its own phase and stage guards, since
+ * what counts as a hand being under way differs between them.
+ *
+ * The last clause is the one worth saying out loud. A player who has already
+ * played to this trick is waiting on the *next* one, which nobody has led --
+ * so what they may play is not settled at all, and `suitLed` would be
+ * answering about a trick that is not theirs any more. It is read off
+ * `playedBy`, which the engine keeps per deal.
+ */
+export function playFixedByLead(
+  state: GameState,
+  playerId: PlayerId,
+  trickSize: number,
+): boolean {
+  if (state.phase !== 'playing' || state.turn === playerId) return false;
+  if (suitLed(state, trickSize) === null) return false;
+  return !trickCards(state).some((cardId) => state.playedBy[cardId] === playerId);
+}
+
 /** How many tricks a player has taken, from the size of their pile. */
 export function pileTricks(state: GameState, playerId: PlayerId, cardsPerTrick: number): number {
   const held = state.zones[pileZoneId(playerId)]?.cards.length ?? 0;

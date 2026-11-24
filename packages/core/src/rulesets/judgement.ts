@@ -51,6 +51,7 @@ import {
   TRICK_ZONE,
   awaitingCollection,
   dealerOf,
+  playFixedByLead,
   pileZone,
   suitLed,
   trickCards,
@@ -695,6 +696,11 @@ export const judgement: Ruleset = {
   },
 
   legalCards,
+
+  premoveReady(state: GameState, playerId: PlayerId): boolean {
+    if (stage(state) !== 'playing') return false;
+    return playFixedByLead(state, playerId, trickSize(state));
+  },
 
   /** Where a card may go: the middle, and only if it is legal there. */
   destinationsFor(state: GameState, playerId: PlayerId, cardId: CardId): ZoneId[] {

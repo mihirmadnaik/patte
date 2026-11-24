@@ -41,6 +41,7 @@ import {
   TRUMP_SUITS,
   awaitingCollection,
   dealerOf,
+  playFixedByLead,
   pileTricks,
   pileZone,
   stageOf,
@@ -433,6 +434,11 @@ export const pachTinDon: Ruleset = {
   },
 
   legalCards,
+
+  premoveReady(state: GameState, playerId: PlayerId): boolean {
+    if (stageOf(state) !== 'playing') return false;
+    return playFixedByLead(state, playerId, TRICK_SIZE);
+  },
 
   /** Every play goes to the same place: the trick in the middle. */
   destinationsFor(state: GameState, playerId: PlayerId, cardId: CardId): ZoneId[] {

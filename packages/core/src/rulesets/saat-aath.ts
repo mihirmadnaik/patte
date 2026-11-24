@@ -42,6 +42,7 @@ import {
   trickZone,
   trumpOf,
   dealerOf,
+  playFixedByLead,
   pileTricks,
 } from './tricks.js';
 import {
@@ -463,6 +464,11 @@ export const saatAath: Ruleset = {
   },
 
   legalCards,
+
+  premoveReady(state: GameState, playerId: PlayerId): boolean {
+    if (stageOf(state) !== 'playing') return false;
+    return playFixedByLead(state, playerId, TRICK_SIZE);
+  },
 
   /**
    * Every play in 7-8 goes to the same place: the trick in the middle.

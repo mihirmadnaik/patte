@@ -41,6 +41,15 @@ interface Store {
   /** Faces from a peek. Ephemeral by design -- never part of any state. */
   peeked: Record<CardId, Face>;
   selection: CardId[];
+  /**
+   * A card chosen before the turn reached us, waiting to play itself.
+   *
+   * Kept here and nowhere else: the server is not told, so nobody at the
+   * table can tell a player who has decided from one who is thinking, and a
+   * refresh forgets it rather than replaying somebody's old intention into a
+   * hand that has moved on.
+   */
+  queued: CardId | null;
   /** Whether your own hand is shown in reading order rather than as dealt. */
   handSorted: boolean;
   /**
@@ -71,6 +80,8 @@ interface Store {
   select(cardIds: CardId[]): void;
   toggleSelected(cardId: CardId): void;
   clearSelection(): void;
+  queue(cardId: CardId): void;
+  unqueue(): void;
   toggleHandSorted(): void;
   declare(text: string, cards?: CardId[]): void;
   /** Forget this table entirely, on the way back to the lobby. */
@@ -90,6 +101,7 @@ export const useStore = create<Store>((set, get) => ({
   cursors: [],
   peeked: {},
   selection: [],
+  queued: null,
   handSorted: false,
   flash: null,
   flashCards: [],
@@ -166,6 +178,16 @@ export const useStore = create<Store>((set, get) => ({
     if (get().selection.length > 0) set({ selection: [] });
   },
 
+  queue(cardId) {
+    // One at a time: arming a second card is changing your mind about the
+    // first, not asking for two plays.
+    set({ queued: cardId, selection: [] });
+  },
+
+  unqueue() {
+    if (get().queued !== null) set({ queued: null });
+  },
+
   toggleHandSorted() {
     set({ handSorted: !get().handSorted });
   },
@@ -198,6 +220,7 @@ export const useStore = create<Store>((set, get) => ({
       cursors: [],
       peeked: {},
       selection: [],
+      queued: null,
       flash: null,
       flashCards: [],
     });

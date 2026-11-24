@@ -67,6 +67,7 @@ import {
   awaitingCollection,
   dealerOf,
   pileTricks,
+  playFixedByLead,
   pileZone,
   stockZone,
   suitLed,
@@ -1347,6 +1348,16 @@ export const laddis: Ruleset = {
   },
 
   legalCards,
+
+  premoveReady(state: GameState, playerId: PlayerId): boolean {
+    // Its own stages: nothing is played during the bidding, while a trump is
+    // being set aside, or while the table is deciding on an offer.
+    if (stage(state) !== 'playing') return false;
+    // And nothing at all while a four-7s hand is waiting to be thrown in --
+    // the hand it would be played into may not be played.
+    if (sevensClaimant(state) !== null) return false;
+    return playFixedByLead(state, playerId, trickSize(state));
+  },
 
   /**
    * Where a card may go: the middle, or -- for the one card that becomes the

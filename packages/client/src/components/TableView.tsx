@@ -8,7 +8,14 @@
  * the way it would across a real table.
  */
 
-import { canSeeFace, getRuleset, type GameState, type PlayerId } from '@patte/core';
+import {
+  canSeeFace,
+  getRuleset,
+  destinationsWhenOnTurn,
+  legalWhenOnTurn,
+  type GameState,
+  type PlayerId,
+} from '@patte/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Connection } from '../net.js';
 import {
@@ -30,6 +37,7 @@ import {
   type Placement,
 } from '../geometry.js';
 import { handOrderFor, sortHand } from '../handsort.js';
+import { premoveAction } from '../premove.js';
 import { cardColour, seatColour } from '../players.js';
 import { sounds } from '../sound.js';
 import { useStore } from '../store.js';
@@ -52,6 +60,15 @@ const MIN_TAP = 30;
 
 /** How far a selected card lifts off the table, so you can see it is chosen. */
 const SELECT_LIFT = 12;
+/**
+ * How long an armed card sits there before it plays itself.
+ *
+ * Long enough to be taken back by somebody who has looked up and changed
+ * their mind, short enough that the point of arming it is not lost. It also
+ * reads to the rest of the table like a player thinking, rather than a card
+ * appearing the instant the turn moves.
+ */
+const PREMOVE_MS = 1_000;
 /** Movement beyond this cancels a hold-to-peek; below it, a click is a click. */
 const DRAG_THRESHOLD = 6;
 const PEEK_HOLD_MS = 420;
@@ -107,6 +124,9 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
   const toggleSelected = useStore((s) => s.toggleSelected);
   const select = useStore((s) => s.select);
   const clearSelection = useStore((s) => s.clearSelection);
+  const queued = useStore((s) => s.queued);
+  const queue = useStore((s) => s.queue);
+  const unqueue = useStore((s) => s.unqueue);
   const handSorted = useStore((s) => s.handSorted);
   const toggleHandSorted = useStore((s) => s.toggleHandSorted);
 
@@ -273,9 +293,6 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
   }
 
   // Which of my cards may actually be played right now. Asked of the ruleset
-  // rather than worked out here -- a rule the player cannot see is a rule that
-  // feels like a bug, but a rule reimplemented in the UI is worse.
-  const playable = new Set(ruleset.legalCards?.(state, you) ?? []);
   const justPlayed = new Set(state.lastPlay?.cardIds ?? []);
 
   // How much of each card in your own hand is actually exposed. Below a
@@ -298,6 +315,29 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
   const paused = ruleset.awaitingChoice?.(state) != null;
   const myTurn = state.turn === you && !paused;
 
+  // --- the pre-move ---------------------------------------------------------
+  //
+  // Most of a trick is spent watching other people play, and for most of that
+  // the player's own decision has already been made for them: once the lead
+  // is down, the rules have settled what they may put on it. So the choice is
+  // offered when it becomes available rather than when it becomes actionable,
+  // and the card waits here until the turn arrives.
+  //
+  // Whether that is safe is not this component's to judge -- `premoveReady`
+  // is the ruleset promising that nothing anybody does before this player's
+  // turn can change what they are allowed to play.
+  const arming = !myTurn && (ruleset.premoveReady?.(state, you) ?? false);
+  /** Whether a card tapped now leads anywhere: to the table, or to the queue. */
+  const canAct = myTurn || arming;
+
+  // Which of my cards may actually be played -- now if it is my turn, and
+  // when the turn comes if I am waiting on one. Asked of the ruleset rather
+  // than worked out here: a rule the player cannot see is a rule that feels
+  // like a bug, but a rule reimplemented in the UI is worse.
+  const playable = new Set(canAct ? legalWhenOnTurn(ruleset, state, you) : []);
+  /** What the rules allow this instant, which is what an armed card is judged against. */
+  const legalNow = myTurn ? ruleset.legalCards?.(state, you) ?? [] : [];
+
   // --- one-tap play ---------------------------------------------------------
   //
   // Picking a card is the easy half of select-then-place. The hard half, on a
@@ -313,8 +353,9 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
   const chosen = selection.length === 1 ? selection[0] : undefined;
   const chosenPlacement = chosen ? placements.get(chosen) : undefined;
   const destinations = useCallback(
-    (cardId: string): string[] => (myTurn ? ruleset.destinationsFor?.(state, you, cardId) ?? [] : []),
-    [ruleset, state, you, myTurn],
+    (cardId: string): string[] =>
+      canAct ? destinationsWhenOnTurn(ruleset, state, you, cardId) : [],
+    [ruleset, state, you, canAct],
   );
   /** Whether tapping this card can offer the whole play as one button. */
   const oneTap = useCallback((cardId: string): boolean => destinations(cardId).length === 1, [destinations]);
@@ -328,6 +369,16 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
       setHandOpen(null);
     },
     [destinations, net, clearSelection],
+  );
+
+  /** The same tap, made early: the card is remembered rather than played. */
+  const armOneTap = useCallback(
+    (cardId: string) => {
+      queue(cardId);
+      sounds.pickup();
+      setHandOpen(null);
+    },
+    [queue],
   );
   const confirmSize = Math.max(38, Math.round(m.cardW * 0.62));
   // While the strip is open the button belongs *in* the strip, on the card the
@@ -347,6 +398,48 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
           ),
         }
       : null;
+
+  // --- the armed card -------------------------------------------------------
+  //
+  // What becomes of it, decided somewhere a test can reach: `fire` when the
+  // turn has arrived and the rules still allow it, `drop` when the moment has
+  // gone, `hold` while there is still waiting to do.
+  const fate = premoveAction({ queued, state, you, legalNow });
+  const firing = fate === 'fire';
+  const queuedPlacement = queued ? placements.get(queued) : undefined;
+  /** The button on the armed card: Stop while it is going down, otherwise nothing. */
+  const stop =
+    firing && queuedPlacement && !drag && !handOpen
+      ? cardPoint(
+          m,
+          { ...queuedPlacement, y: queuedPlacement.y - SELECT_LIFT },
+          0.5,
+          playButtonY(m, confirmSize),
+        )
+      : null;
+
+  /*
+   * Playing it, a second later.
+   *
+   * The timer is keyed on the decision rather than on the state, so that
+   * somebody else's card landing in the middle of the second does not quietly
+   * restart it. What to send is read through a ref at the moment it fires,
+   * which keeps the timer from holding a stale table.
+   */
+  const fireNow = useRef<() => void>(() => {});
+  fireNow.current = () => {
+    if (queued) playOneTap(queued);
+    unqueue();
+  };
+  useEffect(() => {
+    if (fate === 'drop') {
+      unqueue();
+      return;
+    }
+    if (fate !== 'fire') return;
+    const timer = window.setTimeout(() => fireNow.current(), PREMOVE_MS);
+    return () => window.clearTimeout(timer);
+  }, [fate, queued, unqueue]);
 
   // --- interaction ----------------------------------------------------------
 
@@ -374,6 +467,12 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
       } catch {
         // Carry on without capture.
       }
+
+      // Touching a card takes back whatever was armed. That is what makes the
+      // armed card cancellable by tapping it, and movable by tapping another
+      // -- and it is what stops a card going down under a thumb that was
+      // reaching for a different one.
+      unqueue();
 
       if (event.shiftKey) {
         toggleSelected(cardId);
@@ -413,7 +512,7 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
         net.submit({ type: 'peek', cardIds });
       }, PEEK_HOLD_MS);
     },
-    [mayTouch, selection, toggleSelected, select, net, handCrowded, state, you],
+    [mayTouch, selection, toggleSelected, select, net, handCrowded, state, you, unqueue],
   );
 
   const cancelPeek = (): void => {
@@ -688,7 +787,13 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
             placement={{
               ...placement,
               x: placement.x + offset.x,
-              y: placement.y + offset.y - (isDragging ? 14 : 0) - (selection.includes(card.id) && !isDragging ? SELECT_LIFT : 0),
+              y:
+                placement.y +
+                offset.y -
+                (isDragging ? 14 : 0) -
+                ((selection.includes(card.id) || card.id === queued) && !isDragging
+                  ? SELECT_LIFT
+                  : 0),
               z: isDragging ? 9000 : placement.z,
             }}
             heldByOther={card.heldBy !== null && card.heldBy !== you}
@@ -700,8 +805,12 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
             // Whose card this is. The engine recorded who put it there, so
             // the question survives the cards being shuffled about on screen.
             {...(cardColour(state, card.id) ? { marker: cardColour(state, card.id) } : {})}
-            playable={refereed && myTurn && playable.has(card.id)}
+            playable={refereed && canAct && playable.has(card.id)}
+            // Dimming the rest stays on your own turn. Somebody else's turn
+            // showing you what you may play is useful; showing you what you
+            // may not makes your hand look refused when nothing was asked.
             blocked={refereed && myTurn && card.zone === `hand:${you}` && !playable.has(card.id)}
+            queued={card.id === queued}
             interactive={mayTouch(card.id)}
             onPointerDown={onCardPointerDown}
             onDoubleClick={(cardId) => {
@@ -715,13 +824,26 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
 
       {measured && confirm && (
         <button
-          className="playcheck"
+          className={`playcheck${arming ? ' playcheck--arm' : ''}`}
           style={{ left: confirm.at.x, top: confirm.at.y, width: confirmSize, height: confirmSize }}
-          aria-label="play this card"
-          title="Play this card"
-          onClick={() => playOneTap(confirm.cardId)}
+          aria-label={arming ? 'play this card when your turn comes' : 'play this card'}
+          title={arming ? 'Play this when your turn comes' : 'Play this card'}
+          onClick={() => (arming ? armOneTap(confirm.cardId) : playOneTap(confirm.cardId))}
         >
           <span className="playcheck__tick" />
+        </button>
+      )}
+
+      {/* The armed card, going down. One tap stops it. */}
+      {measured && stop && (
+        <button
+          className="playcheck playcheck--stop"
+          style={{ left: stop.x, top: stop.y, width: confirmSize, height: confirmSize }}
+          aria-label="stop this card being played"
+          title="Stop"
+          onClick={() => unqueue()}
+        >
+          <span className="playcheck__stop" />
         </button>
       )}
 
@@ -795,9 +917,11 @@ export function TableView({ state, you, net }: { state: GameState; you: PlayerId
           playable={playable}
           refereed={refereed}
           selected={chosen ?? null}
+          queued={queued}
+          arming={arming}
           confirmSize={confirmSize}
           canPlay={oneTap}
-          onPlay={playOneTap}
+          onPlay={arming ? armOneTap : playOneTap}
           onPick={(cardId) => {
             select([cardId]);
             // Choosing a card used to close the sheet, because the next tap

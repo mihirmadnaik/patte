@@ -334,6 +334,9 @@ export function StatusBar({
   you: PlayerId;
   net: Connection;
 }): React.JSX.Element | null {
+  // Subscribed rather than read: arming a card changes nothing on the table,
+  // so nothing else would bring this line on screen.
+  const queued = useStore((s) => s.queued);
   const ruleset = getRuleset(state.rulesetId);
   if (!ruleset.legalCards || state.phase !== 'playing') return null;
 
@@ -413,7 +416,14 @@ export function StatusBar({
    */
   return (
     <div className={shell(myTurn)}>
-      {asked ? (
+      {/* A card that is going to play itself says so, and says how to stop
+          it. Something happening on the table with nothing on screen having
+          mentioned it is the kind of thing people report as a bug. */}
+      {queued ? (
+        <span className="statusbar__text">
+          {myTurn ? 'Playing your card' : 'Ready — tap it again to take it back'}
+        </span>
+      ) : asked ? (
         <span className="statusbar__text">{asked}</span>
       ) : (
         !myTurn && <span className="statusbar__text">Waiting for {name(state.turn ?? '')}</span>

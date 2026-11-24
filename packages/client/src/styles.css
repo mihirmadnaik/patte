@@ -369,6 +369,18 @@ html, body, #root {
 }
 
 .card.is-selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+/*
+ * A card armed to play itself when the turn comes.
+ *
+ * Marked differently from a selected one on purpose: selection is a card you
+ * are holding, and this is a card you have let go of. The dashed ring is the
+ * nearest thing to "promised, not yet played" that reads at card size.
+ */
+.card.is-queued {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.25), 0 10px 22px rgba(0, 0, 0, 0.45);
+}
 
 /* Someone else has this one; it is not yours to touch right now. */
 .card.is-held { filter: brightness(0.72) saturate(0.7); cursor: not-allowed; }
@@ -1561,6 +1573,37 @@ html, body, #root {
   position: relative;
   flex: 0 0 auto;
   display: flex;
+}
+
+/*
+ * Arming rather than playing. Amber, because the card is not going anywhere
+ * yet -- green is the colour of a card leaving your hand.
+ */
+.playcheck--arm { background: #b7791f; }
+.playcheck--arm .playcheck__tick::after {
+  border-right-color: #b7791f;
+  border-bottom-color: #b7791f;
+}
+
+/* Stopping it, in the second it has before it goes. */
+.playcheck--stop { background: #9b2c2c; opacity: 0.95; }
+.playcheck__stop {
+  width: 66%;
+  height: 66%;
+  border-radius: 50%;
+  background: #fff;
+  position: relative;
+}
+.playcheck__stop::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 38%;
+  height: 38%;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: #9b2c2c;
 }
 
 .playcheck--inline {

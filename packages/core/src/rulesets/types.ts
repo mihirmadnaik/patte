@@ -269,6 +269,23 @@ export interface Ruleset {
   legalCards?(state: GameState, playerId: PlayerId): CardId[];
 
   /**
+   * Whether this player's next card is already settled by the rules.
+   *
+   * The opt-in for pre-moves. Answering true is a promise about the near
+   * future: that `legalCards` asked with the turn moved to this player gives
+   * the set they will really be offered when the turn arrives, and that
+   * nothing anybody else does before then can change it.
+   *
+   * True in the trick games once the lead is down, because the suit to follow
+   * is fixed for the whole trick and a hand only changes when its owner plays
+   * from it. Not answered at all by बदाम सात, where every card put down opens
+   * somebody's next play -- and not answered by a game written later, which
+   * is the point of the hook being optional: a game is outside this until it
+   * says otherwise, rather than inside it until somebody remembers.
+   */
+  premoveReady?(state: GameState, playerId: PlayerId): boolean;
+
+  /**
    * Where a card the player has picked up is allowed to go, right now.
    *
    * This is what lets a touch screen offer "play this" as a single tap: pick a
